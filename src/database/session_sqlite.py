@@ -3,13 +3,10 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.orm import DeclarativeBase
 
 from config.settings import get_settings
+from database.models.base import Base
 
-
-class Base(DeclarativeBase):
-    pass
 
 settings = get_settings()
 
