@@ -1,11 +1,13 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
-from database.session_sqlite import init_db, close_db
+from database.session_sqlite import init_db, close_db, create_default_groups
+from routes.accounts import router as accounts_router
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    await create_default_groups()
     yield
     await close_db()
 
@@ -16,3 +18,5 @@ app = FastAPI(
 )
 
 api_version_prefix = "/api/v1"
+
+app.include_router(accounts_router, prefix=f"{api_version_prefix}/accounts", tags=["Accounts"])

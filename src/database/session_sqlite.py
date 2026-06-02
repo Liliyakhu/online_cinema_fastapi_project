@@ -3,9 +3,11 @@ from typing import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy import select
 
-from config.settings import get_settings
+from config.dependencies import get_settings
 from database.models.base import Base
+from database.models.accounts import UserGroupModel, UserGroupEnum
 
 
 settings = get_settings()
@@ -79,3 +81,13 @@ async def reset_sqlite_database() -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
+
+
+async def create_default_groups() -> None:
+    async with AsyncSQLiteSessionLocal() as session:
+        for group_name in UserGroupEnum:
+            stmt = select(UserGroupModel).where(UserGroupModel.name == group_name)
+            result = await session.execute(stmt)
+            if not result.scalars().first():
+                session.add(UserGroupModel(name=group_name))
+        await session.commit()
