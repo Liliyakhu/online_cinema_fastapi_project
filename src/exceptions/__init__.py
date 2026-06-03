@@ -1,1 +1,1 @@
-from exceptions.security import TokenExpiredError, InvalidTokenError
+from exceptions.security import TokenExpiredError, InvalidTokenError, BaseSecurityError
