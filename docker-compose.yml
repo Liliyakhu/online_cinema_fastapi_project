@@ -1,0 +1,7 @@
+services:
+  mailhog:
+    image: mailhog/mailhog
+    container_name: mailhog_cinema
+    ports:
+      - "8025:8025"
+      - "1025:1025"
