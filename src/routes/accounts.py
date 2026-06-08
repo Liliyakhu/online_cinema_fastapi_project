@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import cast
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -14,6 +14,7 @@ from database import (
     UserGroupEnum,
     ActivationTokenModel,
     RefreshTokenModel,
+    PasswordResetTokenModel,
 )
 from schemas import (
     UserRegistrationRequestSchema,
@@ -23,7 +24,9 @@ from schemas import (
     UserLoginRequestSchema,
     UserLoginResponseSchema,
     TokenRefreshRequestSchema,
-    TokenRefreshResponseSchema
+    TokenRefreshResponseSchema,
+    PasswordResetRequestSchema,
+    PasswordResetCompleteRequestSchema
 )
 
 from config.dependencies import get_settings, get_jwt_auth_manager, get_accounts_email_notificator
@@ -478,3 +481,200 @@ async def logout_user(
 
     return MessageResponseSchema(message="Successfully logged out.")
 
+
+@router.post(
+    "/password-reset/request/",
+    response_model=MessageResponseSchema,
+    summary="Request Password Reset Token",
+    description=(
+            "Allows a user to request a password reset token. If the user exists and is active, "
+            "a new token will be generated and any existing tokens will be invalidated."
+    ),
+    status_code=status.HTTP_200_OK,
+)
+async def request_password_reset_token(
+        data: PasswordResetRequestSchema,
+        db: AsyncSession = Depends(get_db),
+        email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator)
+) -> MessageResponseSchema:
+    """
+    Endpoint to request a password reset token.
+
+    If the user exists and is active, invalidates any existing password reset tokens and generates a new one.
+    Always responds with a success message to avoid leaking user information.
+
+    Args:
+        data (PasswordResetRequestSchema): The request data containing the user's email.
+        db (AsyncSession): The asynchronous database session.
+        email_sender (EmailSenderInterface): The asynchronous email sender.
+
+    Returns:
+        MessageResponseSchema: A success message indicating that instructions will be sent.
+    """
+    stmt = select(UserModel).filter_by(email=data.email)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+
+    if not user or not user.is_active:
+        return MessageResponseSchema(
+            message="If you are registered, you will receive an email with instructions."
+        )
+
+    await db.execute(delete(PasswordResetTokenModel).where(PasswordResetTokenModel.user_id == user.id))
+
+    reset_token = PasswordResetTokenModel(user_id=cast(int, user.id))
+    db.add(reset_token)
+    await db.flush()
+    await db.commit()
+    await db.refresh(reset_token)
+
+    password_reset_complete_link = (
+        f"http://127.0.0.1:8000/api/v1/accounts/reset-password/complete/"
+        f"?email={user.email}&token={reset_token.token}"
+    )
+
+    await email_sender.send_password_reset_email(
+        str(data.email),
+        password_reset_complete_link
+    )
+
+    return MessageResponseSchema(
+        message="If you are registered, you will receive an email with instructions."
+    )
+
+
+@router.post(
+    "/reset-password/complete/",
+    response_model=MessageResponseSchema,
+    summary="Reset User Password",
+    description="Reset a user's password if a valid token is provided.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {
+            "description": "Bad Request - Invalid email or token.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Invalid email or token."}
+                }
+            },
+        },
+        500: {
+            "description": "Internal Server Error",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "An error occurred while resetting the password."}
+                }
+            },
+        },
+    },
+)
+async def reset_password(
+        data: PasswordResetCompleteRequestSchema,
+        db: AsyncSession = Depends(get_db),
+        email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator)
+) -> MessageResponseSchema:
+    stmt = select(UserModel).filter_by(email=data.email)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or token."
+        )
+
+    stmt = select(PasswordResetTokenModel).filter_by(user_id=user.id)
+    result = await db.execute(stmt)
+    token_record = result.scalars().first()
+
+    if not token_record or token_record.token != data.token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or token."
+        )
+
+    expires_at = cast(datetime, token_record.expires_at).replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
+        await db.delete(token_record)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid email or token."
+        )
+
+    try:
+        user.password = data.password
+        await db.delete(token_record)
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while resetting the password."
+        )
+    else:
+        login_link = "http://127.0.0.1:8000/api/v1/accounts/login/"
+        await email_sender.send_password_reset_complete_email(
+            str(data.email),
+            login_link
+        )
+        return MessageResponseSchema(message="Password reset successfully.")
+
+
+@router.post(
+    "/resend-activation/",
+    response_model=MessageResponseSchema,
+    summary="Resend Activation Email",
+    description="Resend activation email to a user.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        400: {
+            "description": "Bad Request - User account is already active.",
+            "content": {
+                "application/json": {
+                    "examples": {
+                        "already_active": {
+                            "summary": "Account Already Active",
+                            "value": {
+                                "detail": "User account is already active."
+                            }
+                        },
+                    }
+                }
+            },
+        },
+    },
+)
+async def resend_activation_email(
+        data: PasswordResetRequestSchema,
+        db: AsyncSession = Depends(get_db),
+        email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
+) -> MessageResponseSchema:
+
+    stmt = select(UserModel).filter_by(email=data.email)
+    result = await db.execute(stmt)
+    user = result.scalars().first()
+
+    if not user:
+        return MessageResponseSchema(message="If your email is registered, you will receive an activation link.")
+
+    if user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User account is already active."
+        )
+
+    await db.execute(delete(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id))
+
+    new_token = ActivationTokenModel(user_id=cast(int, user.id))
+    db.add(new_token)
+    await db.flush()
+    await db.commit()
+    await db.refresh(new_token)
+
+    activation_link = (
+        f"http://127.0.0.1:8000/api/v1/accounts/activate/"
+        f"?email={user.email}&token={new_token.token}"
+    )
+    await email_sender.send_activation_email(str(data.email), activation_link)
+
+    return MessageResponseSchema(message="If your email is registered, you will receive an activation link.")
