@@ -992,3 +992,60 @@ async def test_refresh_access_token_user_not_found(client, db_session, jwt_manag
 
     assert refresh_response.status_code == 404, "Expected status code 404 for non-existent user."
     assert refresh_response.json()["detail"] == "User not found.", "Unexpected error message."
+
+
+@pytest.mark.asyncio
+async def test_resend_activation_success(client, db_session, seed_user_groups):
+    """Test successful resend of activation email."""
+    registration_payload = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!"
+    }
+    await client.post("/api/v1/accounts/register/", json=registration_payload)
+
+    stmt = select(UserModel).where(UserModel.email == registration_payload["email"])
+    result = await db_session.execute(stmt)
+    user = result.scalars().first()
+
+    response = await client.post("/api/v1/accounts/resend-activation/", json={"email": registration_payload["email"]})
+    assert response.status_code == 200
+    assert response.json()["message"] == "If your email is registered, you will receive an activation link."
+
+    result_new = await db_session.execute(
+        select(ActivationTokenModel).where(ActivationTokenModel.user_id == user.id)
+    )
+    new_token = result_new.scalars().first()
+    assert new_token is not None
+
+    expires_at = new_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    assert expires_at > datetime.now(timezone.utc)
+
+
+@pytest.mark.asyncio
+async def test_resend_activation_already_active(client, db_session, seed_user_groups):
+    """Test resend activation for already active user."""
+    registration_payload = {
+        "email": "testuser@example.com",
+        "password": "StrongPassword123!"
+    }
+    await client.post("/api/v1/accounts/register/", json=registration_payload)
+
+    stmt = select(UserModel).where(UserModel.email == registration_payload["email"])
+    result = await db_session.execute(stmt)
+    user = result.scalars().first()
+    user.is_active = True
+    await db_session.commit()
+
+    response = await client.post("/api/v1/accounts/resend-activation/", json={"email": registration_payload["email"]})
+    assert response.status_code == 400
+    assert response.json()["detail"] == "User account is already active."
+
+
+@pytest.mark.asyncio
+async def test_resend_activation_nonexistent_user(client):
+    """Test resend activation for non-existent user."""
+    response = await client.post("/api/v1/accounts/resend-activation/", json={"email": "nonexistent@example.com"})
+    assert response.status_code == 200
+    assert response.json()["message"] == "If your email is registered, you will receive an activation link."
