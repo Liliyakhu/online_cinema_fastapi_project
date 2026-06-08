@@ -1,6 +1,8 @@
 import os
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
 
 from config.settings import Settings, TestingSettings
 from security.interfaces import JWTAuthManagerInterface
@@ -8,6 +10,8 @@ from security.token_manager import JWTAuthManager
 
 from notifications.emails import EmailSender
 from notifications.interfaces import EmailSenderInterface
+
+security = HTTPBearer()
 
 
 def get_settings() -> Settings:
@@ -42,3 +46,17 @@ def get_accounts_email_notificator(
         password_email_template_name=settings.PASSWORD_RESET_TEMPLATE_NAME,
         password_complete_email_template_name=settings.PASSWORD_RESET_COMPLETE_TEMPLATE_NAME,
     )
+
+
+async def get_current_user_id(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+) -> int:
+    try:
+        payload = jwt_manager.decode_access_token(credentials.credentials)
+        user_id = payload.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
+        return user_id
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")

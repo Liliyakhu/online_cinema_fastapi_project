@@ -26,10 +26,16 @@ from schemas import (
     TokenRefreshRequestSchema,
     TokenRefreshResponseSchema,
     PasswordResetRequestSchema,
-    PasswordResetCompleteRequestSchema
+    PasswordResetCompleteRequestSchema,
+    ChangePasswordRequestSchema
 )
 
-from config.dependencies import get_settings, get_jwt_auth_manager, get_accounts_email_notificator
+from config.dependencies import (
+    get_settings,
+    get_jwt_auth_manager,
+    get_accounts_email_notificator,
+    get_current_user_id
+)
 from config.settings import Settings
 from security.interfaces import JWTAuthManagerInterface
 from notifications.interfaces import EmailSenderInterface
@@ -681,3 +687,68 @@ async def resend_activation_email(
     await email_sender.send_activation_email(str(data.email), activation_link)
 
     return MessageResponseSchema(message="If your email is registered, you will receive an activation link.")
+
+
+@router.post(
+    "/change-password/",
+    response_model=MessageResponseSchema,
+    summary="Change Password",
+    description="Change user password if the old password is correct.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        401: {
+            "description": "Unauthorized - Invalid old password.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Invalid old password."}
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - User not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found."}
+                }
+            },
+        },
+        500: {
+            "description": "Internal Server Error.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "An error occurred while changing the password."}
+                }
+            },
+        },
+    },
+)
+async def change_password(
+    data: ChangePasswordRequestSchema,
+    db: AsyncSession = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    result = await db.execute(select(UserModel).filter_by(id=user_id))
+    current_user = result.scalars().first()
+    if not current_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    if not current_user.verify_password(data.old_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid old password.",
+        )
+
+    try:
+        current_user.password = data.new_password
+        await db.commit()
+    except SQLAlchemyError:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while changing the password.",
+        )
+
+    return MessageResponseSchema(message="Password changed successfully.")

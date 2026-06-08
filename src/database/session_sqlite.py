@@ -7,8 +7,7 @@ from sqlalchemy import select
 
 from config.dependencies import get_settings
 from database.models.base import Base
-from database.models.accounts import UserGroupModel, UserGroupEnum
-
+from database.models.accounts import UserGroupModel, UserGroupEnum, UserModel
 
 settings = get_settings()
 
@@ -90,4 +89,26 @@ async def create_default_groups() -> None:
             result = await session.execute(stmt)
             if not result.scalars().first():
                 session.add(UserGroupModel(name=group_name))
+        await session.commit()
+
+
+async def create_test_users() -> None:
+    async with AsyncSQLiteSessionLocal() as session:
+        for email, password, group_name in [
+            ("admin@admin.com", "Admin123&", UserGroupEnum.ADMIN),
+            ("user@user.com", "User123$", UserGroupEnum.USER),
+        ]:
+            stmt = select(UserModel).where(UserModel.email == email)
+            result = await session.execute(stmt)
+            if not result.scalars().first():
+                stmt = select(UserGroupModel).where(UserGroupModel.name == group_name)
+                result = await session.execute(stmt)
+                user_group = result.scalars().first()
+                user = UserModel.create(
+                    email=email,
+                    raw_password=password,
+                    group_id=user_group.id
+                )
+                user.is_active = True
+                session.add(user)
         await session.commit()

@@ -1049,3 +1049,70 @@ async def test_resend_activation_nonexistent_user(client):
     response = await client.post("/api/v1/accounts/resend-activation/", json={"email": "nonexistent@example.com"})
     assert response.status_code == 200
     assert response.json()["message"] == "If your email is registered, you will receive an activation link."
+
+
+@pytest.mark.asyncio
+async def test_change_password_success(client, db_session, jwt_manager, seed_user_groups):
+    """Test successful password change."""
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    result = await db_session.execute(stmt)
+    user_group = result.scalars().first()
+
+    user = UserModel.create(
+        email="testuser@example.com",
+        raw_password="OldPassword123!",
+        group_id=user_group.id
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    access_token = jwt_manager.create_access_token({"user_id": user.id})
+
+    response = await client.post(
+        "/api/v1/accounts/change-password/",
+        json={"old_password": "OldPassword123!", "new_password": "NewPassword123!"},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "Password changed successfully."
+
+    await db_session.refresh(user)
+    assert user.verify_password("NewPassword123!")
+
+
+@pytest.mark.asyncio
+async def test_change_password_invalid_old_password(client, db_session, jwt_manager, seed_user_groups):
+    """Test change password with wrong old password."""
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    result = await db_session.execute(stmt)
+    user_group = result.scalars().first()
+
+    user = UserModel.create(
+        email="testuser@example.com",
+        raw_password="OldPassword123!",
+        group_id=user_group.id
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    access_token = jwt_manager.create_access_token({"user_id": user.id})
+
+    response = await client.post(
+        "/api/v1/accounts/change-password/",
+        json={"old_password": "WrongPassword123!", "new_password": "NewPassword123!"},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Invalid old password."
+
+
+@pytest.mark.asyncio
+async def test_change_password_unauthorized(client):
+    """Test change password without token."""
+    response = await client.post(
+        "/api/v1/accounts/change-password/",
+        json={"old_password": "OldPassword123!", "new_password": "NewPassword123!"},
+    )
+    assert response.status_code == 401
