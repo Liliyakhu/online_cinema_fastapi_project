@@ -6,3 +6,5 @@ __pycache__/
 .idea/
 
 step_by_step_implementation.txt
+celerybeat-schedule
+celerybeat.pid
