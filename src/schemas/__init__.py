@@ -9,5 +9,6 @@ from schemas.accounts import (
     UserLoginRequestSchema,
     TokenRefreshRequestSchema,
     TokenRefreshResponseSchema,
-    ChangePasswordRequestSchema
+    ChangePasswordRequestSchema,
+    UserGroupUpdateSchema
 )

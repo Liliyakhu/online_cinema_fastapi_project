@@ -27,7 +27,8 @@ from schemas import (
     TokenRefreshResponseSchema,
     PasswordResetRequestSchema,
     PasswordResetCompleteRequestSchema,
-    ChangePasswordRequestSchema
+    ChangePasswordRequestSchema,
+    UserGroupUpdateSchema
 )
 
 from config.dependencies import (
@@ -752,3 +753,125 @@ async def change_password(
         )
 
     return MessageResponseSchema(message="Password changed successfully.")
+
+
+@router.patch(
+    "/users/{user_id}/activate/",
+    response_model=MessageResponseSchema,
+    summary="Manually Activate User",
+    description="Admin can manually activate a user account.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        403: {
+            "description": "Forbidden - Only admins can perform this action.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "You do not have permission to perform this action."}
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - User not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found."}
+                }
+            },
+        },
+    },
+)
+async def activate_user_by_admin(
+    user_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    result = await db.execute(
+        select(UserModel)
+        .options(joinedload(UserModel.group))
+        .filter_by(id=current_user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not current_user.has_group(UserGroupEnum.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action.",
+        )
+
+    result = await db.execute(select(UserModel).filter_by(id=user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    target_user.is_active = True
+    await db.commit()
+
+    return MessageResponseSchema(message="User account activated successfully.")
+
+
+@router.patch(
+    "/users/{user_id}/group/",
+    response_model=MessageResponseSchema,
+    summary="Change User Group",
+    description="Admin can change a user's group.",
+    status_code=status.HTTP_200_OK,
+    responses={
+        403: {
+            "description": "Forbidden - Only admins can perform this action.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "You do not have permission to perform this action."}
+                }
+            },
+        },
+        404: {
+            "description": "Not Found - User or group not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "User not found."}
+                }
+            },
+        },
+    },
+)
+async def change_user_group(
+    user_id: int,
+    data: UserGroupUpdateSchema,
+    db: AsyncSession = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    result = await db.execute(
+        select(UserModel)
+        .options(joinedload(UserModel.group))
+        .filter_by(id=current_user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not current_user.has_group(UserGroupEnum.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You do not have permission to perform this action.",
+        )
+
+    result = await db.execute(select(UserModel).filter_by(id=user_id))
+    target_user = result.scalars().first()
+    if not target_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found.",
+        )
+
+    result = await db.execute(select(UserGroupModel).where(UserGroupModel.name == data.group))
+    group = result.scalars().first()
+    if not group:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Group not found.",
+        )
+
+    target_user.group_id = group.id
+    await db.commit()
+
+    return MessageResponseSchema(message=f"User group changed to {data.group.value} successfully.")
+

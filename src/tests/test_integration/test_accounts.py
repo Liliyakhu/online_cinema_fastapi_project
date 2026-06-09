@@ -1116,3 +1116,109 @@ async def test_change_password_unauthorized(client):
         json={"old_password": "OldPassword123!", "new_password": "NewPassword123!"},
     )
     assert response.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_activate_user_by_admin_success(client, db_session, jwt_manager, seed_user_groups):
+    """Test admin can manually activate a user."""
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.ADMIN)
+    result = await db_session.execute(stmt)
+    admin_group = result.scalars().first()
+
+    admin = UserModel.create(
+        email="admin@example.com",
+        raw_password="AdminPass123!",
+        group_id=admin_group.id
+    )
+    admin.is_active = True
+    db_session.add(admin)
+
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    result = await db_session.execute(stmt)
+    user_group = result.scalars().first()
+
+    user = UserModel.create(
+        email="user@example.com",
+        raw_password="UserPass123!",
+        group_id=user_group.id
+    )
+    user.is_active = False
+    db_session.add(user)
+    await db_session.commit()
+
+    access_token = jwt_manager.create_access_token({"user_id": admin.id})
+
+    response = await client.patch(
+        f"/api/v1/accounts/users/{user.id}/activate/",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "User account activated successfully."
+
+    await db_session.refresh(user)
+    assert user.is_active
+
+
+@pytest.mark.asyncio
+async def test_activate_user_by_admin_forbidden(client, db_session, jwt_manager, seed_user_groups):
+    """Test non-admin cannot activate users."""
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    result = await db_session.execute(stmt)
+    user_group = result.scalars().first()
+
+    user = UserModel.create(
+        email="user@example.com",
+        raw_password="UserPass123!",
+        group_id=user_group.id
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    access_token = jwt_manager.create_access_token({"user_id": user.id})
+
+    response = await client.patch(
+        f"/api/v1/accounts/users/{user.id}/activate/",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 403
+    assert response.json()["detail"] == "You do not have permission to perform this action."
+
+
+@pytest.mark.asyncio
+async def test_change_user_group_success(client, db_session, jwt_manager, seed_user_groups):
+    """Test admin can change user group."""
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.ADMIN)
+    result = await db_session.execute(stmt)
+    admin_group = result.scalars().first()
+
+    admin = UserModel.create(
+        email="admin@example.com",
+        raw_password="AdminPass123!",
+        group_id=admin_group.id
+    )
+    admin.is_active = True
+    db_session.add(admin)
+
+    stmt = select(UserGroupModel).where(UserGroupModel.name == UserGroupEnum.USER)
+    result = await db_session.execute(stmt)
+    user_group = result.scalars().first()
+
+    user = UserModel.create(
+        email="user@example.com",
+        raw_password="UserPass123!",
+        group_id=user_group.id
+    )
+    user.is_active = True
+    db_session.add(user)
+    await db_session.commit()
+
+    access_token = jwt_manager.create_access_token({"user_id": admin.id})
+
+    response = await client.patch(
+        f"/api/v1/accounts/users/{user.id}/group/",
+        json={"group": "moderator"},
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert response.status_code == 200
+    assert response.json()["message"] == "User group changed to moderator successfully."
