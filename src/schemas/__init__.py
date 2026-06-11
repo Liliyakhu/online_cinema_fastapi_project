@@ -12,3 +12,18 @@ from schemas.accounts import (
     ChangePasswordRequestSchema,
     UserGroupUpdateSchema
 )
+from schemas.movies import (
+    GenreSchema,
+    StarSchema,
+    DirectorSchema,
+    CertificationSchema,
+    MovieBaseSchema,
+    MovieDetailSchema,
+    MovieListItemSchema,
+    MovieListResponseSchema,
+    MovieCreateSchema,
+    MovieUpdateSchema,
+    GenreCreateSchema,
+    StarCreateSchema,
+    DirectorCreateSchema,
+)
