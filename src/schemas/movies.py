@@ -83,6 +83,9 @@ class MovieListResponseSchema(BaseModel):
     total: int
     page: int
     per_page: int
+    total_pages: int
+    prev_page: Optional[str] = None
+    next_page: Optional[str] = None
 
 
 class MovieCreateSchema(MovieBaseSchema):
@@ -122,4 +125,8 @@ class StarCreateSchema(BaseModel):
 
 
 class DirectorCreateSchema(BaseModel):
+    name: str = Field(..., max_length=255)
+
+
+class CertificationCreateSchema(BaseModel):
     name: str = Field(..., max_length=255)
