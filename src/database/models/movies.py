@@ -40,6 +40,14 @@ MoviesDirectorsModel = Table(
 )
 
 
+FavoritesModel = Table(
+    "favorites",
+    Base.metadata,
+    Column("user_id", ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    Column("movie_id", ForeignKey("movies.id", ondelete="CASCADE"), primary_key=True),
+)
+
+
 class GenreModel(Base):
     __tablename__ = "genres"
 
@@ -137,6 +145,12 @@ class MovieModel(Base):
         "DirectorModel",
         secondary=MoviesDirectorsModel,
         back_populates="movies"
+    )
+
+    favorited_by: Mapped[list["UserModel"]] = relationship(
+        "UserModel",
+        secondary=FavoritesModel,
+        back_populates="favorite_movies"
     )
 
     __table_args__ = (

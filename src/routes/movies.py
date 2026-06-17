@@ -13,7 +13,7 @@ from database.models import (
     GenreModel,
     StarModel,
     DirectorModel,
-    CertificationModel
+    CertificationModel, FavoritesModel
 )
 
 from schemas import (
@@ -21,7 +21,7 @@ from schemas import (
     MovieListItemSchema,
     MovieCreateSchema,
     MovieDetailSchema, CertificationSchema, GenreCreateSchema, DirectorSchema, DirectorCreateSchema, StarSchema,
-    StarCreateSchema, GenreSchema
+    StarCreateSchema, GenreSchema, MessageResponseSchema
 )
 
 from config.dependencies import get_current_user_id
@@ -333,6 +333,65 @@ async def create_certification(
 
 
 @router.get(
+    "/movies/favorites/",
+    response_model=MovieListResponseSchema,
+    summary="Get a paginated list of favorite movies",
+    responses={
+        404: {
+            "description": "No favorite movies found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "No favorite movies found."}
+                }
+            },
+        }
+    }
+)
+async def get_favorites(
+        page: int = Query(1, ge=1, description="Page number (1-based index)"),
+        per_page: int = Query(10, ge=1, le=20, description="Number of items per page"),
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MovieListResponseSchema:
+    base_stmt = (
+        select(MovieModel)
+        .join(MovieModel.favorited_by)
+        .where(UserModel.id == user_id)
+        .distinct()
+    )
+
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
+    result_count = await db.execute(count_stmt)
+    total_items = result_count.scalar() or 0
+
+    if not total_items:
+        raise HTTPException(status_code=404, detail="No favorite movies found.")
+
+    offset = (page - 1) * per_page
+
+    stmt = base_stmt.options(
+        joinedload(MovieModel.genres),
+        joinedload(MovieModel.certification),
+    ).offset(offset).limit(per_page)
+
+    result_movies = await db.execute(stmt)
+    movies = result_movies.scalars().unique().all()
+
+    movie_list = [MovieListItemSchema.model_validate(movie) for movie in movies]
+    total_pages = (total_items + per_page - 1) // per_page
+
+    return MovieListResponseSchema(
+        items=movie_list,
+        total=total_items,
+        page=page,
+        per_page=per_page,
+        total_pages=total_pages,
+        prev_page=f"/api/v1/cinema/movies/favorites/?page={page - 1}&per_page={per_page}" if page > 1 else None,
+        next_page=f"/api/v1/cinema/movies/favorites/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
+    )
+
+
+@router.get(
     "/movies/{movie_id}/",
     response_model=MovieDetailSchema,
     summary="Get movie details",
@@ -368,3 +427,93 @@ async def get_movie(
         raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
 
     return MovieDetailSchema.model_validate(movie)
+
+
+@router.post(
+    "/movies/{movie_id}/favorites/",
+    response_model=MessageResponseSchema,
+    summary="Add movie to favorites",
+    status_code=200,
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+        409: {
+            "description": "Movie already in favorites.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie already in favorites."}
+                }
+            },
+        },
+    }
+)
+async def add_to_favorites(
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    result = await db.execute(
+        select(UserModel)
+        .options(joinedload(UserModel.favorite_movies))
+        .filter_by(id=user_id)
+    )
+    current_user = result.unique().scalars().first()
+
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    if movie in current_user.favorite_movies:
+        raise HTTPException(status_code=409, detail="Movie already in favorites.")
+
+    current_user.favorite_movies.append(movie)
+    await db.commit()
+
+    return MessageResponseSchema(message="Movie added to favorites.")
+
+
+@router.delete(
+    "/movies/{movie_id}/favorites/",
+    response_model=MessageResponseSchema,
+    summary="Remove movie from favorites",
+    status_code=200,
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+    }
+)
+async def delete_from_favorites(
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    result = await db.execute(
+        select(UserModel)
+        .options(joinedload(UserModel.favorite_movies))
+        .filter_by(id=user_id)
+    )
+    current_user = result.unique().scalars().first()
+
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    if movie not in current_user.favorite_movies:
+        raise HTTPException(status_code=409, detail="Movie is not in favorites.")
+
+    current_user.favorite_movies.remove(movie)
+    await db.commit()
+
+    return MessageResponseSchema(message="Movie deleted from favorites.")

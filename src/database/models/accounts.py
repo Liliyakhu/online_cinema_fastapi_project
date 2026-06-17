@@ -91,6 +91,12 @@ class UserModel(Base):
         cascade="all, delete-orphan"
     )
 
+    favorite_movies: Mapped[list["MovieModel"]] = relationship(
+        "MovieModel",
+        secondary="favorites",
+        back_populates="favorited_by"
+    )
+
     def __repr__(self):
         return f"<UserModel(id={self.id}, email={self.email}, is_active={self.is_active})>"
 

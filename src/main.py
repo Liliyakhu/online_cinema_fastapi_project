@@ -4,7 +4,7 @@ from database.session_sqlite import (
     init_db,
     close_db,
     create_default_groups,
-    create_test_users
+    create_test_users, create_test_movies
 )
 from routes.accounts import router as accounts_router
 from routes.movies import router as movies_router
@@ -15,6 +15,7 @@ async def lifespan(app: FastAPI):
     await init_db()
     await create_default_groups()
     await create_test_users()
+    await create_test_movies()
     yield
     await close_db()
 
