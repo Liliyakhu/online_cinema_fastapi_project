@@ -1,3 +1,6 @@
+from sqlalchemy import or_
+from typing import Optional, Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -34,8 +37,7 @@ router = APIRouter()
     description=(
             "<h3>This endpoint retrieves a paginated list of movies from the database. "
             "Clients can specify the `page` number and the number of items per page using `per_page`. "
-            "The response includes details about the movies, total pages, and total items, "
-            "along with links to the previous and next pages if applicable.</h3>"
+            "Supports search, filtering by genre and year, and sorting.</h3>"
     ),
     responses={
         404: {
@@ -51,43 +53,72 @@ router = APIRouter()
 async def get_movie_list(
         page: int = Query(1, ge=1, description="Page number (1-based index)"),
         per_page: int = Query(10, ge=1, le=20, description="Number of items per page"),
+        search: Optional[str] = Query(None, description="Search by title, description, actor, or director"),
+        genre_id: Optional[int] = Query(None, description="Filter by genre ID"),
+        year: Optional[int] = Query(None, description="Filter by release year"),
+        sort_by: Optional[Literal["price", "year", "imdb", "votes"]] = Query(None, description="Sort field"),
+        sort_order: Literal["asc", "desc"] = Query("desc", description="Sort order: asc or desc"),
         db: AsyncSession = Depends(get_db),
 ) -> MovieListResponseSchema:
     """
     Fetch a paginated list of movies from the database (asynchronously).
 
-    This function retrieves a paginated list of movies, allowing the client to specify
-    the page number and the number of items per page. It calculates the total pages
-    and provides links to the previous and next pages when applicable.
-
-    :param page: The page number to retrieve (1-based index, must be >= 1).
-    :type page: int
-    :param per_page: The number of items to display per page (must be between 1 and 20).
-    :type per_page: int
-    :param db: The async SQLAlchemy database session (provided via dependency injection).
-    :type db: AsyncSession
-
-    :return: A response containing the paginated list of movies and metadata.
-    :rtype: MovieListResponseSchema
-
-    :raises HTTPException: Raises a 404 error if no movies are found for the requested page.
+    Supports searching by title/description/actor/director, filtering by genre
+    and year, and sorting by price, year, imdb, or votes.
     """
-    offset = (page - 1) * per_page
+    base_stmt = select(MovieModel)
 
-    count_stmt = select(func.count(MovieModel.id))
+    if search:
+        base_stmt = (
+            base_stmt
+            .outerjoin(MovieModel.stars)
+            .outerjoin(MovieModel.directors)
+            .where(
+                or_(
+                    MovieModel.name.ilike(f"%{search}%"),
+                    MovieModel.description.ilike(f"%{search}%"),
+                    StarModel.name.ilike(f"%{search}%"),
+                    DirectorModel.name.ilike(f"%{search}%"),
+                )
+            )
+        )
+
+    if genre_id:
+        base_stmt = base_stmt.join(MovieModel.genres).where(GenreModel.id == genre_id)
+
+    if year:
+        base_stmt = base_stmt.where(MovieModel.year == year)
+
+    base_stmt = base_stmt.distinct()
+
+    count_stmt = select(func.count()).select_from(base_stmt.subquery())
     result_count = await db.execute(count_stmt)
     total_items = result_count.scalar() or 0
 
     if not total_items:
         raise HTTPException(status_code=404, detail="No movies found.")
 
-    order_by = MovieModel.default_order_by()
-    stmt = select(MovieModel).options(
+    offset = (page - 1) * per_page
+
+    stmt = base_stmt.options(
         joinedload(MovieModel.genres),
         joinedload(MovieModel.certification),
     )
-    if order_by:
-        stmt = stmt.order_by(*order_by)
+
+    sortable_fields = {
+        "price": MovieModel.price,
+        "year": MovieModel.year,
+        "imdb": MovieModel.imdb,
+        "votes": MovieModel.votes,
+    }
+
+    if sort_by:
+        column = sortable_fields[sort_by]
+        stmt = stmt.order_by(column.desc() if sort_order == "desc" else column.asc())
+    else:
+        order_by = MovieModel.default_order_by()
+        if order_by:
+            stmt = stmt.order_by(*order_by)
 
     stmt = stmt.offset(offset).limit(per_page)
 
@@ -98,7 +129,6 @@ async def get_movie_list(
         raise HTTPException(status_code=404, detail="No movies found.")
 
     movie_list = [MovieListItemSchema.model_validate(movie) for movie in movies]
-
     total_pages = (total_items + per_page - 1) // per_page
 
     response = MovieListResponseSchema(
@@ -107,8 +137,8 @@ async def get_movie_list(
         page=page,
         per_page=per_page,
         total_pages=total_pages,
-        prev_page=f"/api/v1/movies/?page={page - 1}&per_page={per_page}" if page > 1 else None,
-        next_page=f"/api/v1/movies/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
+        prev_page=f"/api/v1/cinema/movies/?page={page - 1}&per_page={per_page}" if page > 1 else None,
+        next_page=f"/api/v1/cinema/movies/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
     )
     return response
 
