@@ -300,3 +300,41 @@ async def create_certification(
     await db.commit()
     await db.refresh(certification)
     return CertificationSchema.model_validate(certification)
+
+
+@router.get(
+    "/movies/{movie_id}/",
+    response_model=MovieDetailSchema,
+    summary="Get movie details",
+    description="Retrieve detailed information about a specific movie by its ID.",
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie with the given ID was not found."}
+                }
+            },
+        }
+    }
+)
+async def get_movie(
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+) -> MovieDetailSchema:
+    result = await db.execute(
+        select(MovieModel)
+        .where(MovieModel.id == movie_id)
+        .options(
+            joinedload(MovieModel.certification),
+            joinedload(MovieModel.genres),
+            joinedload(MovieModel.stars),
+            joinedload(MovieModel.directors),
+        )
+    )
+    movie = result.unique().scalar_one_or_none()
+
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
+
+    return MovieDetailSchema.model_validate(movie)
