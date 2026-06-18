@@ -26,4 +26,7 @@ from schemas.movies import (
     GenreCreateSchema,
     StarCreateSchema,
     DirectorCreateSchema,
+    MovieLikeRequestSchema,
+    MovieLikeResponseSchema,
+    CertificationCreateSchema,
 )

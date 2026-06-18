@@ -1,10 +1,20 @@
 import uuid as uuid_module
 
 from typing import Optional
-
-from sqlalchemy import UUID
-
-from sqlalchemy import String, Float, Text, DECIMAL, UniqueConstraint, ForeignKey, Table, Column
+from datetime import datetime, date, timedelta, timezone
+from sqlalchemy import (
+    UUID,
+    Integer,
+    String,
+    Float,
+    Text,
+    DECIMAL,
+    UniqueConstraint,
+    ForeignKey,
+    Table,
+    Column,
+    DateTime
+)
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
 from database.models.base import Base
@@ -153,6 +163,8 @@ class MovieModel(Base):
         back_populates="favorite_movies"
     )
 
+    likes: Mapped[list["MovieLikeModel"]] = relationship("MovieLikeModel", back_populates="movie")
+
     __table_args__ = (
         UniqueConstraint("name", "year", "time", name="unique_movie_constraint"),
     )
@@ -163,4 +175,24 @@ class MovieModel(Base):
 
     def __repr__(self):
         return f"<Movie(name='{self.name}', year={self.year}, imdb={self.imdb})>"
+
+
+class MovieLikeModel(Base):
+    __tablename__ = "movie_likes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    movie_id: Mapped[int] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"), nullable=False)
+    is_like: Mapped[bool] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    user: Mapped["UserModel"] = relationship("UserModel")
+    movie: Mapped["MovieModel"] = relationship("MovieModel", back_populates="likes")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "movie_id", name="unique_user_movie_like"),
+    )
 

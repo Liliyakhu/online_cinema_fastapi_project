@@ -130,3 +130,13 @@ class DirectorCreateSchema(BaseModel):
 
 class CertificationCreateSchema(BaseModel):
     name: str = Field(..., max_length=255)
+
+
+class MovieLikeRequestSchema(BaseModel):
+    is_like: bool
+
+
+class MovieLikeResponseSchema(BaseModel):
+    likes_count: int
+    dislikes_count: int
+    user_like: Optional[bool] = None

@@ -13,19 +13,31 @@ from database.models import (
     GenreModel,
     StarModel,
     DirectorModel,
-    CertificationModel, FavoritesModel
+    CertificationModel,
+    FavoritesModel,
+    MovieLikeModel
 )
 
 from schemas import (
     MovieListResponseSchema,
     MovieListItemSchema,
     MovieCreateSchema,
-    MovieDetailSchema, CertificationSchema, GenreCreateSchema, DirectorSchema, DirectorCreateSchema, StarSchema,
-    StarCreateSchema, GenreSchema, MessageResponseSchema
+    MovieDetailSchema,
+    CertificationSchema,
+    CertificationCreateSchema,
+    GenreCreateSchema,
+    DirectorSchema,
+    DirectorCreateSchema,
+    StarSchema,
+    StarCreateSchema,
+    GenreSchema,
+    MessageResponseSchema,
+    MovieLikeResponseSchema,
+    MovieLikeRequestSchema
 )
 
 from config.dependencies import get_current_user_id
-from schemas.movies import CertificationCreateSchema
+
 
 router = APIRouter()
 
@@ -517,3 +529,79 @@ async def delete_from_favorites(
     await db.commit()
 
     return MessageResponseSchema(message="Movie deleted from favorites.")
+
+
+@router.post(
+    "/movies/{movie_id}/like/",
+    response_model=MovieLikeResponseSchema,
+    summary="Like/dislike a movie",
+    status_code=200,
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+    }
+)
+async def like_movie(
+        data: MovieLikeRequestSchema,
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MovieLikeResponseSchema:
+
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    existing_like = await db.execute(
+        select(MovieLikeModel).where(
+            MovieLikeModel.movie_id == movie_id,
+            MovieLikeModel.user_id == user_id,
+        )
+    )
+    existing_like = existing_like.scalars().first()
+
+    if not existing_like:
+        new_like = MovieLikeModel(user_id=user_id, movie_id=movie_id, is_like=data.is_like)
+        db.add(new_like)
+    elif existing_like.is_like == data.is_like:
+        await db.delete(existing_like)
+    else:
+        existing_like.is_like = data.is_like
+
+    await db.commit()
+
+    likes_result = await db.execute(
+        select(func.count()).select_from(MovieLikeModel).where(
+            MovieLikeModel.movie_id == movie_id,
+            MovieLikeModel.is_like == True
+        )
+    )
+    likes_count = likes_result.scalar() or 0
+
+    dislikes_result = await db.execute(
+        select(func.count()).select_from(MovieLikeModel).where(
+            MovieLikeModel.movie_id == movie_id,
+            MovieLikeModel.is_like == False
+        )
+    )
+    dislikes_count = dislikes_result.scalar() or 0
+
+    current_reaction_result = await db.execute(
+        select(MovieLikeModel.is_like).where(
+            MovieLikeModel.movie_id == movie_id,
+            MovieLikeModel.user_id == user_id,
+        )
+    )
+    user_like = current_reaction_result.scalar_one_or_none()
+
+    return MovieLikeResponseSchema(
+        likes_count=likes_count,
+        dislikes_count=dislikes_count,
+        user_like=user_like,
+    )
