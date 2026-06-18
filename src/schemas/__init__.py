@@ -29,4 +29,6 @@ from schemas.movies import (
     MovieLikeRequestSchema,
     MovieLikeResponseSchema,
     CertificationCreateSchema,
+    MovieRatingRequestSchema,
+    MovieRatingResponseSchema
 )

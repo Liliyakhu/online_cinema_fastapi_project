@@ -13,7 +13,8 @@ from sqlalchemy import (
     ForeignKey,
     Table,
     Column,
-    DateTime
+    DateTime,
+    CheckConstraint
 )
 from sqlalchemy.orm import mapped_column, Mapped, relationship
 
@@ -165,6 +166,8 @@ class MovieModel(Base):
 
     likes: Mapped[list["MovieLikeModel"]] = relationship("MovieLikeModel", back_populates="movie")
 
+    ratings: Mapped[list["MovieRatingModel"]] = relationship("MovieRatingModel", back_populates="movie")
+
     __table_args__ = (
         UniqueConstraint("name", "year", "time", name="unique_movie_constraint"),
     )
@@ -194,5 +197,26 @@ class MovieLikeModel(Base):
 
     __table_args__ = (
         UniqueConstraint("user_id", "movie_id", name="unique_user_movie_like"),
+    )
+
+
+class MovieRatingModel(Base):
+    __tablename__ = "movie_rating"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    movie_id: Mapped[int] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"), nullable=False)
+    rating: Mapped[int] = mapped_column(nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+    user: Mapped["UserModel"] = relationship("UserModel")
+    movie: Mapped["MovieModel"] = relationship("MovieModel", back_populates="ratings")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "movie_id", name="unique_user_movie_rating"),
+        CheckConstraint("rating >= 1 AND rating <= 10", name="check_rating_range"),
     )
 

@@ -15,7 +15,8 @@ from database.models import (
     DirectorModel,
     CertificationModel,
     FavoritesModel,
-    MovieLikeModel
+    MovieLikeModel,
+    MovieRatingModel
 )
 
 from schemas import (
@@ -33,11 +34,12 @@ from schemas import (
     GenreSchema,
     MessageResponseSchema,
     MovieLikeResponseSchema,
-    MovieLikeRequestSchema
+    MovieLikeRequestSchema,
+    MovieRatingRequestSchema,
+    MovieRatingResponseSchema,
 )
 
-from config.dependencies import get_current_user_id
-
+from config.dependencies import get_current_user_id, get_optional_user_id
 
 router = APIRouter()
 
@@ -422,6 +424,7 @@ async def get_favorites(
 async def get_movie(
         movie_id: int,
         db: AsyncSession = Depends(get_db),
+        user_id: Optional[int] = Depends(get_optional_user_id),
 ) -> MovieDetailSchema:
     result = await db.execute(
         select(MovieModel)
@@ -438,7 +441,58 @@ async def get_movie(
     if not movie:
         raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
 
-    return MovieDetailSchema.model_validate(movie)
+    likes_result = await db.execute(
+        select(func.count()).select_from(MovieLikeModel).where(
+            MovieLikeModel.movie_id == movie_id, MovieLikeModel.is_like == True
+        )
+    )
+    likes_count = likes_result.scalar() or 0
+
+    dislikes_result = await db.execute(
+        select(func.count()).select_from(MovieLikeModel).where(
+            MovieLikeModel.movie_id == movie_id, MovieLikeModel.is_like == False
+        )
+    )
+    dislikes_count = dislikes_result.scalar() or 0
+
+    avg_result = await db.execute(
+        select(func.avg(MovieRatingModel.rating)).where(MovieRatingModel.movie_id == movie_id)
+    )
+    average_rating = avg_result.scalar()
+
+    total_ratings_result = await db.execute(
+        select(func.count()).select_from(MovieRatingModel).where(MovieRatingModel.movie_id == movie_id)
+    )
+    total_ratings = total_ratings_result.scalar() or 0
+
+    user_like = None
+    user_rating = None
+    if user_id:
+        user_like_result = await db.execute(
+            select(MovieLikeModel.is_like).where(
+                MovieLikeModel.movie_id == movie_id,
+                MovieLikeModel.user_id == user_id,
+            )
+        )
+        user_like = user_like_result.scalar_one_or_none()
+
+        user_rating_result = await db.execute(
+            select(MovieRatingModel.rating).where(
+                MovieRatingModel.movie_id == movie_id,
+                MovieRatingModel.user_id == user_id,
+            )
+        )
+        user_rating = user_rating_result.scalar_one_or_none()
+
+    movie_data = MovieDetailSchema.model_validate(movie)
+    movie_data.likes_count = likes_count
+    movie_data.dislikes_count = dislikes_count
+    movie_data.average_rating = round(average_rating, 1) if average_rating else None
+    movie_data.total_ratings = total_ratings
+    movie_data.user_like = user_like
+    movie_data.user_rating = user_rating
+
+    return movie_data
 
 
 @router.post(
@@ -605,3 +659,74 @@ async def like_movie(
         dislikes_count=dislikes_count,
         user_like=user_like,
     )
+
+
+@router.post(
+    "/movies/{movie_id}/rate/",
+    response_model=MovieRatingResponseSchema,
+    summary="Rate a movie",
+    status_code=200,
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+    }
+)
+async def rate_movie(
+        data: MovieRatingRequestSchema,
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MovieRatingResponseSchema:
+
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    existing_rating = await db.execute(
+        select(MovieRatingModel).where(
+            MovieRatingModel.movie_id == movie_id,
+            MovieRatingModel.user_id == user_id,
+        )
+    )
+    existing_rating = existing_rating.scalars().first()
+
+    if not existing_rating:
+        new_rating = MovieRatingModel(user_id=user_id, movie_id=movie_id, rating=data.rating)
+        db.add(new_rating)
+    else:
+        existing_rating.rating = data.rating
+
+    await db.commit()
+
+    avg_result = await db.execute(
+        select(func.avg(MovieRatingModel.rating)).where(MovieRatingModel.movie_id == movie_id)
+    )
+    avg_result = avg_result.scalar() or 0
+
+    total_ratings = await db.execute(
+        select(func.count()).select_from(MovieRatingModel).where(
+            MovieRatingModel.movie_id == movie_id,
+        )
+    )
+    total_ratings = total_ratings.scalar() or 0
+
+    user_rating = await db.execute(
+        select(MovieRatingModel.rating).where(
+            MovieRatingModel.movie_id == movie_id,
+            MovieRatingModel.user_id == user_id,
+        )
+    )
+    user_rating = user_rating.scalar_one_or_none()
+
+    return MovieRatingResponseSchema(
+        average_rating=avg_result,
+        total_ratings=total_ratings,
+        user_rating=user_rating
+    )
+

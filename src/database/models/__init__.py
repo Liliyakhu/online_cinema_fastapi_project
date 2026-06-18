@@ -18,5 +18,6 @@ from database.models.movies import (
     StarsMoviesModel,
     MoviesDirectorsModel,
     FavoritesModel,
-    MovieLikeModel
+    MovieLikeModel,
+    MovieRatingModel
 )

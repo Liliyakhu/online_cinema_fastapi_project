@@ -66,6 +66,12 @@ class MovieDetailSchema(MovieBaseSchema):
     genres: List[GenreSchema]
     stars: List[StarSchema]
     directors: List[DirectorSchema]
+    likes_count: int = 0
+    dislikes_count: int = 0
+    average_rating: Optional[float] = None
+    total_ratings: int = 0
+    user_like: Optional[bool] = None
+    user_rating: Optional[int] = None
 
     model_config = {"from_attributes": True}
 
@@ -140,3 +146,13 @@ class MovieLikeResponseSchema(BaseModel):
     likes_count: int
     dislikes_count: int
     user_like: Optional[bool] = None
+
+
+class MovieRatingRequestSchema(BaseModel):
+    rating: int = Field(..., ge=1, le=10)
+
+
+class MovieRatingResponseSchema(BaseModel):
+    average_rating: float
+    total_ratings: int
+    user_rating: Optional[int]

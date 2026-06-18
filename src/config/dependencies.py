@@ -1,8 +1,8 @@
 import os
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-
+from typing import Optional
 
 from config.settings import Settings, TestingSettings
 from security.interfaces import JWTAuthManagerInterface
@@ -12,6 +12,7 @@ from notifications.emails import EmailSender
 from notifications.interfaces import EmailSenderInterface
 
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 def get_settings() -> Settings:
@@ -60,3 +61,16 @@ async def get_current_user_id(
         return user_id
     except Exception:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid or expired token.")
+
+
+async def get_optional_user_id(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+) -> Optional[int]:
+    if not credentials:
+        return None
+    try:
+        payload = jwt_manager.decode_access_token(credentials.credentials)
+        return payload.get("user_id")
+    except Exception:
+        return None
