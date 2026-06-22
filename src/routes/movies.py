@@ -22,7 +22,9 @@ from database.models import (
     MovieCommentModel,
     MoviesGenresModel,
     CommentLikeModel,
-    NotificationModel
+    NotificationModel,
+    MoviesDirectorsModel,
+    StarsMoviesModel
 )
 
 from schemas import (
@@ -1061,6 +1063,312 @@ async def delete_movie(
     # TODO: Prevent deletion if at least one user has purchased the movie (requires future Order/Purchase model)
 
     await db.delete(movie)
+    await db.commit()
+
+
+@router.patch(
+    "/genres/{genre_id}/",
+    response_model=GenreSchema,
+    summary="Update a genre by ID",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Genre not found.",
+            "content": {"application/json": {"example": {"detail": "Genre not found."}}},
+        },
+        409: {
+            "description": "Genre with this name already exists.",
+            "content": {"application/json": {"example": {"detail": "Genre with this name already exists."}}},
+        },
+    }
+)
+async def update_genre(
+        genre_id: int,
+        data: GenreCreateSchema,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> GenreSchema:
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    genre = await db.get(GenreModel, genre_id)
+    if not genre:
+        raise HTTPException(status_code=404, detail="Genre not found.")
+
+    existing = await db.execute(
+        select(GenreModel).where(GenreModel.name == data.name, GenreModel.id != genre_id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="Genre with this name already exists.")
+
+    genre.name = data.name
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    await db.refresh(genre)
+    return GenreSchema.model_validate(genre)
+
+
+@router.delete(
+    "/genres/{genre_id}/",
+    summary="Delete a genre by ID",
+    status_code=204,
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Genre not found.",
+            "content": {"application/json": {"example": {"detail": "Genre not found."}}},
+        },
+    }
+)
+async def delete_genre(
+        genre_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    genre = await db.get(GenreModel, genre_id)
+    if not genre:
+        raise HTTPException(status_code=404, detail="Genre not found.")
+
+    movies_count_result = await db.execute(
+        select(func.count()).select_from(MoviesGenresModel).where(MoviesGenresModel.c.genre_id == genre_id)
+    )
+    movies_count = movies_count_result.scalar() or 0
+    if movies_count > 0:
+        raise HTTPException(status_code=409, detail="Cannot delete genre that is used by at least one movie.")
+
+    await db.delete(genre)
+    await db.commit()
+
+
+@router.patch(
+    "/stars/{star_id}/",
+    response_model=StarSchema,
+    summary="Update a star by ID",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Star not found.",
+            "content": {"application/json": {"example": {"detail": "Star not found."}}},
+        },
+        409: {
+            "description": "Star with this name already exists.",
+            "content": {"application/json": {"example": {"detail": "Star with this name already exists."}}},
+        },
+    }
+)
+async def update_star(
+        star_id: int,
+        data: StarCreateSchema,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> StarSchema:
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    star = await db.get(StarModel, star_id)
+    if not star:
+        raise HTTPException(status_code=404, detail="Star not found.")
+
+    existing = await db.execute(
+        select(StarModel).where(StarModel.name == data.name, StarModel.id != star_id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="Star with this name already exists.")
+
+    star.name = data.name
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    await db.refresh(star)
+    return StarSchema.model_validate(star)
+
+
+@router.delete(
+    "/stars/{star_id}/",
+    summary="Delete a star by ID",
+    status_code=204,
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Star not found.",
+            "content": {"application/json": {"example": {"detail": "Star not found."}}},
+        },
+    }
+)
+async def delete_star(
+        star_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    star = await db.get(StarModel, star_id)
+    if not star:
+        raise HTTPException(status_code=404, detail="Star not found.")
+
+    movies_count_result = await db.execute(
+        select(func.count()).select_from(StarsMoviesModel).where(StarsMoviesModel.c.star_id == star_id)
+    )
+    movies_count = movies_count_result.scalar() or 0
+    if movies_count > 0:
+        raise HTTPException(status_code=409, detail="Cannot delete star that is used by at least one movie.")
+
+    await db.delete(star)
+    await db.commit()
+
+
+@router.patch(
+    "/directors/{director_id}/",
+    response_model=DirectorSchema,
+    summary="Update a director by ID",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Director not found.",
+            "content": {"application/json": {"example": {"detail": "Director not found."}}},
+        },
+        409: {
+            "description": "Director with this name already exists.",
+            "content": {"application/json": {"example": {"detail": "Director with this name already exists."}}},
+        },
+    }
+)
+async def update_director(
+        director_id: int,
+        data: DirectorCreateSchema,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> DirectorSchema:
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    director = await db.get(DirectorModel, director_id)
+    if not director:
+        raise HTTPException(status_code=404, detail="Director not found.")
+
+    existing = await db.execute(
+        select(DirectorModel).where(DirectorModel.name == data.name, DirectorModel.id != director_id)
+    )
+    if existing.scalars().first():
+        raise HTTPException(status_code=409, detail="Director with this name already exists.")
+
+    director.name = data.name
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    await db.refresh(director)
+    return DirectorSchema.model_validate(director)
+
+
+@router.delete(
+    "/directors/{director_id}/",
+    summary="Delete a director by ID",
+    status_code=204,
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Director not found.",
+            "content": {"application/json": {"example": {"detail": "Director not found."}}},
+        },
+    }
+)
+async def delete_director(
+        director_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    director = await db.get(DirectorModel, director_id)
+    if not director:
+        raise HTTPException(status_code=404, detail="Director not found.")
+
+    movies_count_result = await db.execute(
+        select(func.count()).select_from(MoviesDirectorsModel).where(MoviesDirectorsModel.c.director_id == director_id)
+    )
+    movies_count = movies_count_result.scalar() or 0
+    if movies_count > 0:
+        raise HTTPException(status_code=409, detail="Cannot delete director that is used by at least one movie.")
+
+    await db.delete(director)
     await db.commit()
 
 
