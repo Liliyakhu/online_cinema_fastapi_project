@@ -249,3 +249,28 @@ class MovieCommentModel(Base):
         back_populates="replies",
         remote_side=[id],
     )
+    likes: Mapped[list["CommentLikeModel"]] = relationship(
+        "CommentLikeModel",
+        back_populates="comment",
+    )
+
+
+class CommentLikeModel(Base):
+    __tablename__ = "comment_likes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    comment_id: Mapped[int] = mapped_column(ForeignKey("movie_comments.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    user: Mapped["UserModel"] = relationship("UserModel")
+    comment: Mapped["MovieCommentModel"] = relationship("MovieCommentModel", back_populates="likes")
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "comment_id", name="unique_user_comment_like"),
+    )
+

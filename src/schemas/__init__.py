@@ -35,3 +35,7 @@ from schemas.movies import (
     CommentCreateSchema,
     GenreWithCountSchema
 )
+from schemas.notifications import (
+    NotificationSchema
+)
+

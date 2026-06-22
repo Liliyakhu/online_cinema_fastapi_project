@@ -20,5 +20,10 @@ from database.models.movies import (
     FavoritesModel,
     MovieLikeModel,
     MovieRatingModel,
-    MovieCommentModel
+    MovieCommentModel,
+    CommentLikeModel
 )
+from database.models.notifications import (
+    NotificationModel,
+)
+

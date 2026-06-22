@@ -18,7 +18,9 @@ from database.models import (
     MovieLikeModel,
     MovieRatingModel,
     MovieCommentModel,
-    MoviesGenresModel
+    MoviesGenresModel,
+    CommentLikeModel,
+    NotificationModel
 )
 
 from schemas import (
@@ -771,6 +773,13 @@ async def create_comment(
         if parent_comment.parent_id:
             raise HTTPException(status_code=400, detail="Cannot reply to a reply.")
 
+        if parent_comment.user_id != user_id:
+            notification = NotificationModel(
+                user_id=parent_comment.user_id,
+                message="Your comment received a new reply.",
+            )
+            db.add(notification)
+
     comment = MovieCommentModel(
         user_id=user_id,
         movie_id=movie_id,
@@ -849,4 +858,58 @@ async def get_genres(
         GenreWithCountSchema(id=row.id, name=row.name, movies_count=row.movies_count)
         for row in rows
     ]
+
+
+@router.post(
+    "/comments/{comment_id}/like/",
+    response_model=MessageResponseSchema,
+    summary="Like or unlike a comment",
+    status_code=200,
+    responses={
+        404: {
+            "description": "Comment not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Comment not found."}
+                }
+            },
+        },
+    }
+)
+async def like_comment(
+        comment_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MessageResponseSchema:
+    comment = await db.get(MovieCommentModel, comment_id)
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found.")
+
+    existing_like = await db.execute(
+        select(CommentLikeModel).where(
+            CommentLikeModel.comment_id == comment_id,
+            CommentLikeModel.user_id == user_id,
+        )
+    )
+    existing_like = existing_like.scalars().first()
+
+    if existing_like:
+        await db.delete(existing_like)
+        await db.commit()
+        return MessageResponseSchema(message="Comment unliked.")
+
+    new_like = CommentLikeModel(user_id=user_id, comment_id=comment_id)
+    db.add(new_like)
+
+    if comment.user_id != user_id:
+        notification = NotificationModel(
+            user_id=comment.user_id,
+            message="Your comment received a new like.",
+        )
+        db.add(notification)
+
+    await db.commit()
+
+    return MessageResponseSchema(message="Comment liked.")
+
 
