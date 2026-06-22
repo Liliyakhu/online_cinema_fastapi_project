@@ -1,3 +1,5 @@
+from sqlalchemy.exc import IntegrityError
+
 from sqlalchemy import or_
 from typing import Optional, Literal, List
 
@@ -43,7 +45,8 @@ from schemas import (
     MovieRatingResponseSchema,
     CommentCreateSchema,
     CommentResponseSchema,
-    GenreWithCountSchema
+    GenreWithCountSchema,
+    MovieUpdateSchema
 )
 
 from config.dependencies import get_current_user_id, get_optional_user_id
@@ -913,3 +916,93 @@ async def like_comment(
     return MessageResponseSchema(message="Comment liked.")
 
 
+@router.patch(
+    "/movies/{movie_id}/",
+    response_model=MovieDetailSchema,
+    summary="Update a movie by ID",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Movie not found.",
+            "content": {"application/json": {"example": {"detail": "Movie with the given ID was not found."}}},
+        },
+    }
+)
+async def update_movie(
+        movie_id: int,
+        movie_data: MovieUpdateSchema,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> MovieDetailSchema:
+    # Перевірка прав
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    movie_result = await db.execute(
+        select(MovieModel)
+        .options(
+            joinedload(MovieModel.genres),
+            joinedload(MovieModel.stars),
+            joinedload(MovieModel.directors),
+        )
+        .filter_by(id=movie_id)
+    )
+    movie = movie_result.unique().scalar_one_or_none()
+
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie with the given ID was not found.")
+
+    update_data = movie_data.model_dump(exclude_unset=True)
+
+    if "genre_ids" in update_data:
+        genre_ids = update_data.pop("genre_ids")
+        genres_result = await db.execute(select(GenreModel).where(GenreModel.id.in_(genre_ids)))
+        movie.genres = genres_result.scalars().all()
+
+    if "star_ids" in update_data:
+        star_ids = update_data.pop("star_ids")
+        stars_result = await db.execute(select(StarModel).where(StarModel.id.in_(star_ids)))
+        movie.stars = stars_result.scalars().all()
+
+    if "director_ids" in update_data:
+        director_ids = update_data.pop("director_ids")
+        directors_result = await db.execute(select(DirectorModel).where(DirectorModel.id.in_(director_ids)))
+        movie.directors = directors_result.scalars().all()
+
+    if "certification_id" in update_data:
+        cert = await db.get(CertificationModel, update_data["certification_id"])
+        if not cert:
+            raise HTTPException(status_code=404, detail="Certification not found.")
+
+    for field, value in update_data.items():
+        setattr(movie, field, value)
+
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=400, detail="Invalid input data.")
+
+    result = await db.execute(
+        select(MovieModel)
+        .options(
+            joinedload(MovieModel.certification),
+            joinedload(MovieModel.genres),
+            joinedload(MovieModel.stars),
+            joinedload(MovieModel.directors),
+        )
+        .filter_by(id=movie.id)
+    )
+    movie = result.scalars().unique().first()
+
+    return MovieDetailSchema.model_validate(movie)
