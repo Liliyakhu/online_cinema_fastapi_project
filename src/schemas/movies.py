@@ -156,3 +156,25 @@ class MovieRatingResponseSchema(BaseModel):
     average_rating: float
     total_ratings: int
     user_rating: Optional[int]
+
+
+class CommentCreateSchema(BaseModel):
+    text: str = Field(..., max_length=255)
+    parent_id: Optional[int] = None
+
+
+class CommentResponseSchema(BaseModel):
+    id: int
+    text: str
+    user_id: int
+    created_at: datetime
+    replies: List["CommentResponseSchema"] = []
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("replies", mode="before")
+    @classmethod
+    def default_replies(cls, value):
+        return value or []
+
+

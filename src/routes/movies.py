@@ -1,5 +1,5 @@
 from sqlalchemy import or_
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -16,7 +16,8 @@ from database.models import (
     CertificationModel,
     FavoritesModel,
     MovieLikeModel,
-    MovieRatingModel
+    MovieRatingModel,
+    MovieCommentModel
 )
 
 from schemas import (
@@ -37,6 +38,8 @@ from schemas import (
     MovieLikeRequestSchema,
     MovieRatingRequestSchema,
     MovieRatingResponseSchema,
+    CommentCreateSchema,
+    CommentResponseSchema,
 )
 
 from config.dependencies import get_current_user_id, get_optional_user_id
@@ -730,3 +733,94 @@ async def rate_movie(
         user_rating=user_rating
     )
 
+
+@router.post(
+    "/movies/{movie_id}/comments/",
+    response_model=CommentResponseSchema,
+    summary="Add a comment or reply to a movie",
+    status_code=201,
+    responses={
+        404: {
+            "description": "Movie or parent comment not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+    }
+)
+async def create_comment(
+        movie_id: int,
+        data: CommentCreateSchema,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> CommentResponseSchema:
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    parent_id = data.parent_id if data.parent_id and data.parent_id > 0 else None
+
+    if parent_id:
+        parent_comment = await db.get(MovieCommentModel, parent_id)
+        if not parent_comment or parent_comment.movie_id != movie_id:
+            raise HTTPException(status_code=404, detail="Parent comment not found.")
+        if parent_comment.parent_id:
+            raise HTTPException(status_code=400, detail="Cannot reply to a reply.")
+
+    comment = MovieCommentModel(
+        user_id=user_id,
+        movie_id=movie_id,
+        parent_id=parent_id,
+        text=data.text,
+    )
+    db.add(comment)
+    await db.commit()
+    await db.refresh(comment)
+
+    result = await db.execute(
+        select(MovieCommentModel)
+        .where(MovieCommentModel.id == comment.id)
+        .options(joinedload(MovieCommentModel.replies))
+    )
+    comment = result.unique().scalar_one()
+
+    return CommentResponseSchema.model_validate(comment)
+
+
+@router.get(
+    "/movies/{movie_id}/comments/",
+    response_model=List[CommentResponseSchema],
+    summary="Get all comments for a movie",
+    responses={
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie not found."}
+                }
+            },
+        },
+    }
+)
+async def get_comments(
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+) -> List[CommentResponseSchema]:
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found.")
+
+    result = await db.execute(
+        select(MovieCommentModel)
+        .where(
+            MovieCommentModel.movie_id == movie_id,
+            MovieCommentModel.parent_id.is_(None),
+        )
+        .options(joinedload(MovieCommentModel.replies).joinedload(MovieCommentModel.replies))
+        .order_by(MovieCommentModel.created_at.desc())
+    )
+    comments = result.unique().scalars().all()
+
+    return [CommentResponseSchema.model_validate(comment) for comment in comments]

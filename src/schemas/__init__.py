@@ -30,5 +30,7 @@ from schemas.movies import (
     MovieLikeResponseSchema,
     CertificationCreateSchema,
     MovieRatingRequestSchema,
-    MovieRatingResponseSchema
+    MovieRatingResponseSchema,
+    CommentResponseSchema,
+    CommentCreateSchema
 )

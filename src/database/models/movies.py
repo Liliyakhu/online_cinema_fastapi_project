@@ -168,6 +168,8 @@ class MovieModel(Base):
 
     ratings: Mapped[list["MovieRatingModel"]] = relationship("MovieRatingModel", back_populates="movie")
 
+    comments: Mapped[list["MovieCommentModel"]] = relationship("MovieCommentModel", back_populates="movie")
+
     __table_args__ = (
         UniqueConstraint("name", "year", "time", name="unique_movie_constraint"),
     )
@@ -220,3 +222,30 @@ class MovieRatingModel(Base):
         CheckConstraint("rating >= 1 AND rating <= 10", name="check_rating_range"),
     )
 
+
+class MovieCommentModel(Base):
+    __tablename__ = "movie_comments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    movie_id: Mapped[int] = mapped_column(ForeignKey("movies.id", ondelete="CASCADE"), nullable=False)
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("movie_comments.id", ondelete="CASCADE"), nullable=True)
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc)
+    )
+
+    user: Mapped["UserModel"] = relationship("UserModel")
+    movie: Mapped["MovieModel"] = relationship("MovieModel", back_populates="comments")
+    replies: Mapped[list["MovieCommentModel"]] = relationship(
+        "MovieCommentModel",
+        back_populates="parent",
+        order_by="MovieCommentModel.created_at"
+    )
+    parent: Mapped[Optional["MovieCommentModel"]] = relationship(
+        "MovieCommentModel",
+        back_populates="replies",
+        remote_side=[id],
+    )

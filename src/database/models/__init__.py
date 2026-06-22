@@ -19,5 +19,6 @@ from database.models.movies import (
     MoviesDirectorsModel,
     FavoritesModel,
     MovieLikeModel,
-    MovieRatingModel
+    MovieRatingModel,
+    MovieCommentModel
 )
