@@ -17,7 +17,8 @@ from database.models import (
     FavoritesModel,
     MovieLikeModel,
     MovieRatingModel,
-    MovieCommentModel
+    MovieCommentModel,
+    MoviesGenresModel
 )
 
 from schemas import (
@@ -40,6 +41,7 @@ from schemas import (
     MovieRatingResponseSchema,
     CommentCreateSchema,
     CommentResponseSchema,
+    GenreWithCountSchema
 )
 
 from config.dependencies import get_current_user_id, get_optional_user_id
@@ -824,3 +826,27 @@ async def get_comments(
     comments = result.unique().scalars().all()
 
     return [CommentResponseSchema.model_validate(comment) for comment in comments]
+
+
+@router.get(
+    "/genres/",
+    response_model=List[GenreWithCountSchema],
+    summary="Get list of genres with movie count",
+)
+async def get_genres(
+        db: AsyncSession = Depends(get_db),
+) -> List[GenreWithCountSchema]:
+    stmt = (
+        select(GenreModel.id, GenreModel.name, func.count(MoviesGenresModel.c.movie_id).label("movies_count"))
+        .outerjoin(MoviesGenresModel, GenreModel.id == MoviesGenresModel.c.genre_id)
+        .group_by(GenreModel.id)
+        .order_by(GenreModel.name)
+    )
+    result = await db.execute(stmt)
+    rows = result.all()
+
+    return [
+        GenreWithCountSchema(id=row.id, name=row.name, movies_count=row.movies_count)
+        for row in rows
+    ]
+

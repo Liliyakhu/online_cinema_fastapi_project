@@ -32,5 +32,6 @@ from schemas.movies import (
     MovieRatingRequestSchema,
     MovieRatingResponseSchema,
     CommentResponseSchema,
-    CommentCreateSchema
+    CommentCreateSchema,
+    GenreWithCountSchema
 )

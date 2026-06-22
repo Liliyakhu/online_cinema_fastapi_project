@@ -178,3 +178,10 @@ class CommentResponseSchema(BaseModel):
         return value or []
 
 
+class GenreWithCountSchema(BaseModel):
+    id: int
+    name: str
+    movies_count: int
+
+    model_config = {"from_attributes": True}
+
