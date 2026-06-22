@@ -1006,3 +1006,61 @@ async def update_movie(
     movie = result.scalars().unique().first()
 
     return MovieDetailSchema.model_validate(movie)
+
+
+@router.delete(
+    "/movies/{movie_id}/",
+    summary="Delete a movie by ID",
+    description=(
+            "<h3>Delete a specific movie from the database by its unique ID.</h3>"
+            "<p>If the movie exists, it will be deleted. If it does not exist, "
+            "a 404 error will be returned.</p>"
+    ),
+    responses={
+        204: {
+            "description": "Movie deleted successfully."
+        },
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+        404: {
+            "description": "Movie not found.",
+            "content": {
+                "application/json": {
+                    "example": {"detail": "Movie with the given ID was not found."}
+                }
+            },
+        },
+    },
+    status_code=204
+)
+async def delete_movie(
+        movie_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+):
+    # Перевірка прав
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    movie = await db.get(MovieModel, movie_id)
+    if not movie:
+        raise HTTPException(
+            status_code=404,
+            detail="Movie with the given ID was not found."
+        )
+
+    # TODO: Prevent deletion if at least one user has purchased the movie (requires future Order/Purchase model)
+
+    await db.delete(movie)
+    await db.commit()
+
+
