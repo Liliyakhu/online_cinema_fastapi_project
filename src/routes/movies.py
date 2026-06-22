@@ -376,6 +376,11 @@ async def create_certification(
 async def get_favorites(
         page: int = Query(1, ge=1, description="Page number (1-based index)"),
         per_page: int = Query(10, ge=1, le=20, description="Number of items per page"),
+        search: Optional[str] = Query(None, description="Search by title, description, actor, or director"),
+        genre_id: Optional[int] = Query(None, description="Filter by genre ID"),
+        year: Optional[int] = Query(None, description="Filter by release year"),
+        sort_by: Optional[Literal["price", "year", "imdb", "votes"]] = Query(None, description="Sort field"),
+        sort_order: Literal["asc", "desc"] = Query("desc", description="Sort order: asc or desc"),
         db: AsyncSession = Depends(get_db),
         user_id: int = Depends(get_current_user_id),
 ) -> MovieListResponseSchema:
@@ -386,6 +391,28 @@ async def get_favorites(
         .distinct()
     )
 
+    if search:
+        base_stmt = (
+            base_stmt
+            .outerjoin(MovieModel.stars)
+            .outerjoin(MovieModel.directors)
+            .where(
+                or_(
+                    MovieModel.name.ilike(f"%{search}%"),
+                    MovieModel.description.ilike(f"%{search}%"),
+                    StarModel.name.ilike(f"%{search}%"),
+                    DirectorModel.name.ilike(f"%{search}%"),
+                )
+            )
+        )
+
+    if genre_id:
+        base_stmt = base_stmt.join(MovieModel.genres).where(GenreModel.id == genre_id)
+
+    if year:
+        base_stmt = base_stmt.where(MovieModel.year == year)
+
+    base_stmt = base_stmt.distinct()
     count_stmt = select(func.count()).select_from(base_stmt.subquery())
     result_count = await db.execute(count_stmt)
     total_items = result_count.scalar() or 0
@@ -398,7 +425,24 @@ async def get_favorites(
     stmt = base_stmt.options(
         joinedload(MovieModel.genres),
         joinedload(MovieModel.certification),
-    ).offset(offset).limit(per_page)
+    )
+
+    sortable_fields = {
+        "price": MovieModel.price,
+        "year": MovieModel.year,
+        "imdb": MovieModel.imdb,
+        "votes": MovieModel.votes,
+    }
+
+    if sort_by:
+        column = sortable_fields[sort_by]
+        stmt = stmt.order_by(column.desc() if sort_order == "desc" else column.asc())
+    else:
+        order_by = MovieModel.default_order_by()
+        if order_by:
+            stmt = stmt.order_by(*order_by)
+
+    stmt = stmt.offset(offset).limit(per_page)
 
     result_movies = await db.execute(stmt)
     movies = result_movies.scalars().unique().all()
