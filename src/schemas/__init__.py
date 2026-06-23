@@ -47,3 +47,7 @@ from schemas.orders import (
     OrderResponseSchema,
     OrderListResponseSchema
 )
+from schemas.payments import (
+    CheckoutSessionResponseSchema,
+    PaymentResponseSchema
+)

@@ -1,10 +1,12 @@
 import os
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
     BASE_DIR: Path = Path(__file__).parent.parent.parent
     PATH_TO_DB: str = str(BASE_DIR / "cinema.db")
     SECRET_KEY_ACCESS: str = os.getenv("SECRET_KEY_ACCESS", "change-me-in-production")
@@ -24,6 +26,8 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     ORDER_CONFIRMATION_EMAIL_TEMPLATE_NAME: str = "order_confirmation.html"
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
 
     @property
     def CELERY_BROKER_URL(self) -> str:

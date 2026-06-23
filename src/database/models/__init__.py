@@ -35,3 +35,8 @@ from database.models.orders import (
     OrderItemModel,
     OrderStatusEnum
 )
+from database.models.payments import (
+    PaymentModel,
+    PaymentItemModel,
+    PaymentStatusEnum
+)
