@@ -21,8 +21,10 @@ from schemas import (
     OrderListResponseSchema,
     OrderResponseSchema
 )
-from config.dependencies import get_current_user_id
+from config.dependencies import get_current_user_id, get_accounts_email_notificator
 from routes.cart import is_movie_purchased, get_or_create_cart
+from notifications.interfaces import EmailSenderInterface
+
 
 router = APIRouter()
 
@@ -210,6 +212,7 @@ async def pay_order(
         order_id: int,
         db: AsyncSession = Depends(get_db),
         user_id: int = Depends(get_current_user_id),
+        email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
 ) -> MessageResponseSchema:
     order = await db.get(OrderModel, order_id)
     if not order or order.user_id != user_id:
@@ -221,7 +224,12 @@ async def pay_order(
     order.status = OrderStatusEnum.PAID
     await db.commit()
 
-    # TODO: Send email confirmation once email integration is wired up for orders
+    user = await db.get(UserModel, user_id)
+    await email_sender.send_order_confirmation_email(
+        email=user.email,
+        order_id=order.id,
+        total_amount=str(order.total_amount),
+    )
 
     return MessageResponseSchema(message="Order paid successfully.")
 

@@ -23,6 +23,7 @@ class EmailSender(EmailSenderInterface):
         activation_complete_email_template_name: str,
         password_email_template_name: str,
         password_complete_email_template_name: str,
+        order_confirmation_email_template_name: str,
     ):
         self._hostname = hostname
         self._port = port
@@ -33,6 +34,7 @@ class EmailSender(EmailSenderInterface):
         self._activation_complete_email_template_name = activation_complete_email_template_name
         self._password_email_template_name = password_email_template_name
         self._password_complete_email_template_name = password_complete_email_template_name
+        self._order_confirmation_email_template_name = order_confirmation_email_template_name
 
         self._env = Environment(loader=FileSystemLoader(template_dir))
 
@@ -116,4 +118,18 @@ class EmailSender(EmailSenderInterface):
         template = self._env.get_template(self._password_complete_email_template_name)
         html_content = template.render(email=email, login_link=login_link)
         subject = "Your Password Has Been Successfully Reset"
+        await self._send_email(email, subject, html_content)
+
+    async def send_order_confirmation_email(self, email: str, order_id: int, total_amount: str) -> None:
+        """
+        Send an order payment confirmation email asynchronously.
+
+        Args:
+            email (str): The recipient's email address.
+            order_id (int): The ID of the paid order.
+            total_amount (str): The total amount paid, formatted as a string.
+        """
+        template = self._env.get_template(self._order_confirmation_email_template_name)
+        html_content = template.render(email=email, order_id=order_id, total_amount=total_amount)
+        subject = "Order Payment Confirmation"
         await self._send_email(email, subject, html_content)

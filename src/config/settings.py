@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     PASSWORD_RESET_COMPLETE_TEMPLATE_NAME: str = "password_reset_complete.html"
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
+    ORDER_CONFIRMATION_EMAIL_TEMPLATE_NAME: str = "order_confirmation.html"
 
     @property
     def CELERY_BROKER_URL(self) -> str:
