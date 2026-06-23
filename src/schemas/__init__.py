@@ -38,4 +38,6 @@ from schemas.movies import (
 from schemas.notifications import (
     NotificationSchema
 )
+from schemas.cart import CartItemSchema, CartResponseSchema
+
 

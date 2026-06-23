@@ -9,6 +9,7 @@ from database.session_sqlite import (
 from routes.accounts import router as accounts_router
 from routes.movies import router as movies_router
 from routes.notifications import router as notifications_router
+from routes.cart import router as cart_router
 
 
 @asynccontextmanager
@@ -31,3 +32,5 @@ api_version_prefix = "/api/v1"
 app.include_router(accounts_router, prefix=f"{api_version_prefix}/accounts", tags=["Accounts"])
 app.include_router(movies_router, prefix=f"{api_version_prefix}/cinema", tags=["Cinema"])
 app.include_router(notifications_router, prefix=f"{api_version_prefix}/notifications", tags=["Notifications"])
+app.include_router(cart_router, prefix=f"{api_version_prefix}/cart", tags=["Cart"])
+

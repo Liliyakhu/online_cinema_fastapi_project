@@ -26,4 +26,4 @@ from database.models.movies import (
 from database.models.notifications import (
     NotificationModel,
 )
-
+from database.models.cart import CartModel, CartItemModel
