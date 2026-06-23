@@ -293,3 +293,45 @@ async def get_all_orders(
         )
         for order in orders
     ]
+
+
+@router.get(
+    "/{order_id}/",
+    response_model=OrderResponseSchema,
+    summary="Get an order by id",
+    responses={
+        404: {
+            "description": "Order not found.",
+            "content": {"application/json": {"example": {"detail": "Order not found."}}},
+        }
+    }
+)
+async def get_order(
+        order_id: int,
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> OrderResponseSchema:
+    result = await db.execute(
+        select(OrderModel)
+        .options(joinedload(OrderModel.items).joinedload(OrderItemModel.movie))
+        .filter_by(id=order_id)
+    )
+    order = result.unique().scalar_one_or_none()
+
+    if not order or order.user_id != user_id:
+        raise HTTPException(status_code=404, detail="Order not found.")
+
+    return OrderResponseSchema(
+        id=order.id,
+        created_at=order.created_at,
+        status=order.status,
+        total_amount=order.total_amount,
+        items=[
+            OrderItemSchema(
+                movie_id=item.movie_id,
+                title=item.movie.name,
+                price_at_order=item.price_at_order,
+            )
+            for item in order.items
+        ],
+    )
