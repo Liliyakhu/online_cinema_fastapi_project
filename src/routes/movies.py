@@ -24,7 +24,8 @@ from database.models import (
     CommentLikeModel,
     NotificationModel,
     MoviesDirectorsModel,
-    StarsMoviesModel
+    StarsMoviesModel,
+    CartItemModel
 )
 
 from schemas import (
@@ -1102,6 +1103,17 @@ async def delete_movie(
         raise HTTPException(
             status_code=404,
             detail="Movie with the given ID was not found."
+        )
+
+    # Перевірка на наявність у кошиках користувачів
+    cart_count_result = await db.execute(
+        select(func.count()).select_from(CartItemModel).where(CartItemModel.movie_id == movie_id)
+    )
+    cart_count = cart_count_result.scalar() or 0
+    if cart_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete movie: it exists in {cart_count} user cart(s)."
         )
 
     # TODO: Prevent deletion if at least one user has purchased the movie (requires future Order/Purchase model)
