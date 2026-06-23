@@ -10,6 +10,7 @@ from routes.accounts import router as accounts_router
 from routes.movies import router as movies_router
 from routes.notifications import router as notifications_router
 from routes.cart import router as cart_router
+from routes.orders import router as orders_router
 
 
 @asynccontextmanager
@@ -33,4 +34,5 @@ app.include_router(accounts_router, prefix=f"{api_version_prefix}/accounts", tag
 app.include_router(movies_router, prefix=f"{api_version_prefix}/cinema", tags=["Cinema"])
 app.include_router(notifications_router, prefix=f"{api_version_prefix}/notifications", tags=["Notifications"])
 app.include_router(cart_router, prefix=f"{api_version_prefix}/cart", tags=["Cart"])
+app.include_router(orders_router, prefix=f"{api_version_prefix}/orders", tags=["Orders"])
 
