@@ -1,15 +1,26 @@
 from typing import List, Optional
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from database import get_db, UserModel, UserGroupEnum
-from database.models import CartModel, CartItemModel, MovieModel
-from database.models.orders import OrderModel, OrderItemModel, OrderStatusEnum
-from schemas import OrderResponseSchema, MessageResponseSchema
-from schemas.orders import OrderItemSchema
+from database.models import (
+    CartModel,
+    CartItemModel,
+    MovieModel,
+    OrderModel,
+    OrderItemModel,
+    OrderStatusEnum
+)
+from schemas import (
+    OrderResponseSchema,
+    MessageResponseSchema,
+    OrderItemSchema,
+    OrderListResponseSchema,
+    OrderResponseSchema
+)
 from config.dependencies import get_current_user_id
 from routes.cart import is_movie_purchased, get_or_create_cart
 
@@ -213,3 +224,72 @@ async def pay_order(
     # TODO: Send email confirmation once email integration is wired up for orders
 
     return MessageResponseSchema(message="Order paid successfully.")
+
+
+@router.get(
+    "/all/",
+    response_model=List[OrderResponseSchema],
+    summary="Moderator: get all orders with filters",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+    }
+)
+async def get_all_orders(
+        user_id_filter: Optional[int] = Query(None, description="Filter by user ID"),
+        status_filter: Optional[OrderStatusEnum] = Query(None, description="Filter by order status"),
+        date_from: Optional[datetime] = Query(None, description="Filter orders created after this date"),
+        date_to: Optional[datetime] = Query(None, description="Filter orders created before this date"),
+        db: AsyncSession = Depends(get_db),
+        current_user_id: int = Depends(get_current_user_id),
+) -> List[OrderResponseSchema]:
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=current_user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    stmt = select(OrderModel).options(
+        joinedload(OrderModel.items).joinedload(OrderItemModel.movie)
+    )
+
+    if user_id_filter:
+        stmt = stmt.where(OrderModel.user_id == user_id_filter)
+
+    if status_filter:
+        stmt = stmt.where(OrderModel.status == status_filter)
+
+    if date_from:
+        stmt = stmt.where(OrderModel.created_at >= date_from)
+
+    if date_to:
+        stmt = stmt.where(OrderModel.created_at <= date_to)
+
+    stmt = stmt.order_by(OrderModel.created_at.desc())
+
+    result = await db.execute(stmt)
+    orders = result.unique().scalars().all()
+
+    return [
+        OrderResponseSchema(
+            id=order.id,
+            created_at=order.created_at,
+            status=order.status,
+            total_amount=order.total_amount,
+            items=[
+                OrderItemSchema(
+                    movie_id=item.movie_id,
+                    title=item.movie.name,
+                    price_at_order=item.price_at_order,
+                )
+                for item in order.items
+            ],
+        )
+        for order in orders
+    ]
