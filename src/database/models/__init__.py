@@ -26,4 +26,12 @@ from database.models.movies import (
 from database.models.notifications import (
     NotificationModel,
 )
-from database.models.cart import CartModel, CartItemModel
+from database.models.cart import (
+    CartModel,
+    CartItemModel
+)
+from database.models.orders import (
+    OrderModel,
+    OrderItemModel,
+    OrderStatusEnum
+)

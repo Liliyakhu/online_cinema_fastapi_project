@@ -6,7 +6,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
 from database import get_db, MovieModel
-from database.models import CartModel, CartItemModel, UserModel, UserGroupEnum
+from database.models import (
+    CartModel,
+    CartItemModel,
+    UserModel,
+    UserGroupEnum,
+    OrderItemModel,
+    OrderModel,
+    OrderStatusEnum
+)
 from schemas import CartItemSchema, CartResponseSchema, MessageResponseSchema
 from config.dependencies import get_current_user_id
 
@@ -16,9 +24,17 @@ router = APIRouter()
 async def is_movie_purchased(db: AsyncSession, user_id: int, movie_id: int) -> bool:
     """
     Check if the user has already purchased this movie.
-    TODO: Replace with real check against OrderItem/Order (status=paid) once Orders module is implemented.
     """
-    return False
+    result = await db.execute(
+        select(OrderItemModel)
+        .join(OrderModel)
+        .where(
+            OrderItemModel.movie_id == movie_id,
+            OrderModel.user_id == user_id,
+            OrderModel.status == OrderStatusEnum.PAID,
+        )
+    )
+    return result.scalars().first() is not None
 
 
 async def get_or_create_cart(db: AsyncSession, user_id: int) -> CartModel:
