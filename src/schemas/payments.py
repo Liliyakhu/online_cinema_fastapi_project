@@ -9,6 +9,7 @@ from database.models.payments import PaymentStatusEnum
 
 class CheckoutSessionResponseSchema(BaseModel):
     checkout_url: str
+    price_changed_warning: Optional[str] = None
 
 
 class PaymentResponseSchema(BaseModel):

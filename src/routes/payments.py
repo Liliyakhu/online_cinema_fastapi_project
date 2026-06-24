@@ -56,12 +56,21 @@ async def create_checkout_session(
     if order.status != OrderStatusEnum.PENDING:
         raise HTTPException(status_code=409, detail="Order is not pending.")
 
+    # Revalidate total amount in case movie prices have changed
+    current_total = sum(item.movie.price for item in order.items)
+    price_changed = current_total != order.total_amount
+    old_total = order.total_amount  # завжди визначено, до зміни
+
+    if price_changed:
+        order.total_amount = current_total
+        await db.commit()
+
     line_items = [
         {
             "price_data": {
                 "currency": "usd",
                 "product_data": {"name": item.movie.name},
-                "unit_amount": int(item.price_at_order * 100),
+                "unit_amount": int(item.movie.price * 100),  # актуальна ціна, не price_at_order
             },
             "quantity": 1,
         }
@@ -77,7 +86,14 @@ async def create_checkout_session(
         metadata={"order_id": str(order.id), "user_id": str(user_id)},
     )
 
-    return CheckoutSessionResponseSchema(checkout_url=session.url)
+    warning = None
+    if price_changed:
+        warning = f"Note: total price has changed from ${old_total} to ${current_total} due to price updates."
+
+    return CheckoutSessionResponseSchema(
+        checkout_url=session.url,
+        price_changed_warning=warning,
+    )
 
 
 @router.post("/webhook/", include_in_schema=False)
