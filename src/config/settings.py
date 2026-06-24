@@ -7,8 +7,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    BASE_DIR: Path = Path(__file__).parent.parent.parent
-    PATH_TO_DB: str = str(BASE_DIR / "cinema.db")
+    BASE_DIR: Path = Path(__file__).parent.parent
+    PATH_TO_DB: str = str(BASE_DIR.parent / "cinema.db")
     SECRET_KEY_ACCESS: str = os.getenv("SECRET_KEY_ACCESS", "change-me-in-production")
     SECRET_KEY_REFRESH: str = os.getenv("SECRET_KEY_REFRESH", "change-me-in-production")
     JWT_SIGNING_ALGORITHM: str = "HS256"
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     EMAIL_HOST_USER: str = "noreply@cinema.com"
     EMAIL_HOST_PASSWORD: str = ""
     EMAIL_USE_TLS: bool = False
-    PATH_TO_EMAIL_TEMPLATES_DIR: str = str(BASE_DIR / "src" / "notifications" / "templates")
+    PATH_TO_EMAIL_TEMPLATES_DIR: str = str(BASE_DIR / "notifications" / "templates")
     ACTIVATION_EMAIL_TEMPLATE_NAME: str = "activation_request.html"
     ACTIVATION_COMPLETE_EMAIL_TEMPLATE_NAME: str = "activation_complete.html"
     PASSWORD_RESET_TEMPLATE_NAME: str = "password_reset_request.html"
@@ -28,10 +28,19 @@ class Settings(BaseSettings):
     ORDER_CONFIRMATION_EMAIL_TEMPLATE_NAME: str = "order_confirmation.html"
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
+    POSTGRES_USER: str = os.getenv("POSTGRES_USER", "postgres")
+    POSTGRES_PASSWORD: str = os.getenv("POSTGRES_PASSWORD", "postgres")
+    POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", 5432))
+    POSTGRES_DB: str = os.getenv("POSTGRES_DB", "cinema")
 
     @property
     def CELERY_BROKER_URL(self) -> str:
         return f"redis://{self.REDIS_HOST}:{self.REDIS_PORT}/0"
+
+    @property
+    def DATABASE_URL(self) -> str:
+        return f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
 
 
 class TestingSettings(Settings):
