@@ -1,17 +1,20 @@
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from datetime import datetime
+from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
+from typing import Optional, Literal, List
 
-from database import get_db, UserModel
+
+from database import get_db, UserModel, UserGroupEnum
 from database.models.orders import OrderModel, OrderItemModel, OrderStatusEnum
 from database.models.payments import PaymentModel, PaymentItemModel, PaymentStatusEnum
 
 from config.dependencies import get_current_user_id, get_settings
 from notifications.interfaces import EmailSenderInterface
 from config.dependencies import get_accounts_email_notificator
-from schemas import CheckoutSessionResponseSchema
+from schemas import CheckoutSessionResponseSchema, PaymentResponseSchema
 
 router = APIRouter()
 
@@ -136,3 +139,73 @@ async def stripe_webhook(
             )
 
     return {"status": "success"}
+
+
+@router.get(
+    "/",
+    response_model=List[PaymentResponseSchema],
+    summary="Get current user's payment history",
+)
+async def get_payments(
+        db: AsyncSession = Depends(get_db),
+        user_id: int = Depends(get_current_user_id),
+) -> List[PaymentResponseSchema]:
+    result = await db.execute(
+        select(PaymentModel)
+        .where(PaymentModel.user_id == user_id)
+        .order_by(PaymentModel.created_at.desc())
+    )
+    payments = result.scalars().all()
+
+    return [PaymentResponseSchema.model_validate(payment) for payment in payments]
+
+
+@router.get(
+    "/all/",
+    response_model=List[PaymentResponseSchema],
+    summary="Moderator: get all payments with filters",
+    responses={
+        403: {
+            "description": "No permission.",
+            "content": {"application/json": {"example": {"detail": "No permission."}}},
+        },
+    }
+)
+async def get_all_payments(
+        user_id_filter: Optional[int] = Query(None, description="Filter by user ID"),
+        status_filter: Optional[PaymentStatusEnum] = Query(None, description="Filter by payment status"),
+        date_from: Optional[datetime] = Query(None, description="Filter payments created after this date"),
+        date_to: Optional[datetime] = Query(None, description="Filter payments created before this date"),
+        db: AsyncSession = Depends(get_db),
+        current_user_id: int = Depends(get_current_user_id),
+) -> List[PaymentResponseSchema]:
+    result = await db.execute(
+        select(UserModel).options(joinedload(UserModel.group)).filter_by(id=current_user_id)
+    )
+    current_user = result.scalars().first()
+    if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+    ):
+        raise HTTPException(status_code=403, detail="No permission.")
+
+    stmt = select(PaymentModel)
+
+    if user_id_filter:
+        stmt = stmt.where(PaymentModel.user_id == user_id_filter)
+
+    if status_filter:
+        stmt = stmt.where(PaymentModel.status == status_filter)
+
+    if date_from:
+        stmt = stmt.where(PaymentModel.created_at >= date_from)
+
+    if date_to:
+        stmt = stmt.where(PaymentModel.created_at <= date_to)
+
+    stmt = stmt.order_by(PaymentModel.created_at.desc())
+
+    result = await db.execute(stmt)
+    payments = result.scalars().all()
+
+    return [PaymentResponseSchema.model_validate(payment) for payment in payments]
