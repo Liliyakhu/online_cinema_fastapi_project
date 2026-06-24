@@ -1,4 +1,5 @@
 import stripe
+import logging
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
 from fastapi.responses import HTMLResponse
@@ -154,6 +155,15 @@ async def stripe_webhook(
                 order_id=order.id,
                 total_amount=str(order.total_amount),
             )
+
+    elif event["type"] == "payment_intent.payment_failed":
+        payment_intent = event["data"]["object"]
+        last_error = payment_intent.last_payment_error
+        error_message = last_error.message if last_error else "Unknown error"
+        logging.warning(
+            f"Payment failed: {error_message}. "
+            f"Recommendation: Try a different payment method or contact your bank."
+        )
 
     return {"status": "success"}
 
