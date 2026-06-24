@@ -1,6 +1,7 @@
 import stripe
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Request, Query, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -209,3 +210,38 @@ async def get_all_payments(
     payments = result.scalars().all()
 
     return [PaymentResponseSchema.model_validate(payment) for payment in payments]
+
+
+@router.get("/success/", response_class=HTMLResponse, include_in_schema=False)
+async def payment_success_page():
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Payment Successful</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1 style="color: #27ae60;">✅ Payment Successful!</h1>
+        <p>Thank you for your purchase. A confirmation email has been sent to you.</p>
+        <p>You can now access your purchased movies in your account.</p>
+    </body>
+    </html>
+    """
+
+
+@router.get("/cancel/", response_class=HTMLResponse, include_in_schema=False)
+async def payment_cancel_page():
+    return """
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <title>Payment Canceled</title>
+    </head>
+    <body style="font-family: Arial, sans-serif; text-align: center; padding: 50px;">
+        <h1 style="color: #e74c3c;">❌ Payment Canceled</h1>
+        <p>Your payment was not completed. You can try again from your cart.</p>
+    </body>
+    </html>
+    """
