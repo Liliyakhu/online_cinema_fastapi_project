@@ -33,6 +33,15 @@ class Settings(BaseSettings):
     POSTGRES_HOST: str = os.getenv("POSTGRES_HOST", "localhost")
     POSTGRES_PORT: int = int(os.getenv("POSTGRES_PORT", 5432))
     POSTGRES_DB: str = os.getenv("POSTGRES_DB", "cinema")
+    MINIO_HOST: str = os.getenv("MINIO_HOST", "localhost")
+    MINIO_PORT: int = int(os.getenv("MINIO_PORT", 9000))
+    MINIO_ROOT_USER: str = os.getenv("MINIO_ROOT_USER", "minioadmin")
+    MINIO_ROOT_PASSWORD: str = os.getenv("MINIO_ROOT_PASSWORD", "some_password")
+    MINIO_STORAGE: str = os.getenv("MINIO_STORAGE", "cinema-storage")
+
+    @property
+    def S3_STORAGE_ENDPOINT(self) -> str:
+        return f"http://{self.MINIO_HOST}:{self.MINIO_PORT}"
 
     @property
     def CELERY_BROKER_URL(self) -> str:

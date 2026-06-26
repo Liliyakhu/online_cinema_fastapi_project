@@ -10,6 +10,8 @@ from security.token_manager import JWTAuthManager
 
 from notifications.emails import EmailSender
 from notifications.interfaces import EmailSenderInterface
+from storages import S3StorageClient
+from storages.interfaces import S3StorageInterface
 
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
@@ -75,3 +77,14 @@ async def get_optional_user_id(
         return payload.get("user_id")
     except Exception:
         return None
+
+
+def get_s3_storage_client(
+    settings: Settings = Depends(get_settings)
+) -> S3StorageInterface:
+    return S3StorageClient(
+        endpoint_url=settings.S3_STORAGE_ENDPOINT,
+        access_key=settings.MINIO_ROOT_USER,
+        secret_key=settings.MINIO_ROOT_PASSWORD,
+        bucket_name=settings.MINIO_STORAGE,
+    )

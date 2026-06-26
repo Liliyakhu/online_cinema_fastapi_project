@@ -51,3 +51,8 @@ from schemas.payments import (
     CheckoutSessionResponseSchema,
     PaymentResponseSchema
 )
+from schemas.profiles import (
+    ProfileCreateSchema,
+    ProfileUpdateSchema,
+    ProfileResponseSchema
+)

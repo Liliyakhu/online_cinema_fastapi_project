@@ -8,6 +8,7 @@ from routes.notifications import router as notifications_router
 from routes.cart import router as cart_router
 from routes.orders import router as orders_router
 from routes.payments import router as payments_router
+from routes.profiles import router as profiles_router
 
 ENVIRONMENT = os.getenv("ENVIRONMENT", "developing")
 
@@ -43,3 +44,4 @@ app.include_router(notifications_router, prefix=f"{api_version_prefix}/notificat
 app.include_router(cart_router, prefix=f"{api_version_prefix}/cart", tags=["Cart"])
 app.include_router(orders_router, prefix=f"{api_version_prefix}/orders", tags=["Orders"])
 app.include_router(payments_router, prefix=f"{api_version_prefix}/payments", tags=["Payments"])
+app.include_router(profiles_router, prefix=f"{api_version_prefix}/accounts", tags=["Profiles"])
