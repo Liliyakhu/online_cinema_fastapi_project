@@ -458,7 +458,8 @@ async def get_favorites(
         per_page=per_page,
         total_pages=total_pages,
         prev_page=f"/api/v1/cinema/movies/favorites/?page={page - 1}&per_page={per_page}" if page > 1 else None,
-        next_page=f"/api/v1/cinema/movies/favorites/?page={page + 1}&per_page={per_page}" if page < total_pages else None,
+        next_page=f"/api/v1/cinema/movies/favorites/?page={page + 1}"
+                  f"&per_page={per_page}" if page < total_pages else None,
     )
 
 

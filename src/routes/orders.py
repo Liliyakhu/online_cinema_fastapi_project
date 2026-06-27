@@ -19,7 +19,6 @@ from schemas import (
     MessageResponseSchema,
     OrderItemSchema,
     OrderListResponseSchema,
-    OrderResponseSchema
 )
 from config.dependencies import get_current_user_id, get_accounts_email_notificator
 from routes.cart import is_movie_purchased, get_or_create_cart
