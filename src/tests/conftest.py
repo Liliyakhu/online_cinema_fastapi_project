@@ -3,7 +3,7 @@ from httpx import AsyncClient, ASGITransport
 from sqlalchemy import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config.dependencies import get_settings, get_accounts_email_notificator
+from config.dependencies import get_settings, get_accounts_email_notificator, get_s3_storage_client
 from database import (
     UserGroupEnum,
     UserGroupModel,
@@ -14,6 +14,7 @@ from main import app
 from security.token_manager import JWTAuthManager
 from security.interfaces import JWTAuthManagerInterface
 from tests.doubles.stubs.emails import StubEmailSender
+from tests.doubles.fakes.storage import FakeS3Storage
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -28,8 +29,14 @@ async def email_sender_stub():
 
 
 @pytest_asyncio.fixture
-async def client(email_sender_stub):
+async def s3_storage_fake():
+    return FakeS3Storage()
+
+
+@pytest_asyncio.fixture
+async def client(email_sender_stub, s3_storage_fake):
     app.dependency_overrides[get_accounts_email_notificator] = lambda: email_sender_stub
+    app.dependency_overrides[get_s3_storage_client] = lambda: s3_storage_fake
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as async_client:
         yield async_client
     app.dependency_overrides.clear()
