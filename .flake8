@@ -1,0 +1,10 @@
+[flake8]
+inline-quotes = "
+ignore = E203, E266, W503, ANN002, ANN003, ANN101, ANN102, ANN401, N807, N818, VNE001, F401, W504, F821, VNE003, ANN001, ANN201, ANN204, ANN206, W391, W292, Q000, N802, E402, C901, E712, ANN202, VNE002
+max-line-length = 119
+max-complexity = 18
+select = B,C,E,F,W,T4,B9,ANN,Q0,N8,VNE
+exclude = .venv
+extend-exclude =
+    src/tests/*,
+    src/database/migrations/*

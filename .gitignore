@@ -4,3 +4,7 @@ __pycache__/
 .env
 *.db
 .idea/
+
+step_by_step_implementation.txt
+celerybeat-schedule
+celerybeat.pid

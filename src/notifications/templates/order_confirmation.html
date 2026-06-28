@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Order Confirmation</title>
+</head>
+<body style="font-family: Arial, sans-serif; background-color: #f4f4f4; padding: 20px;">
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; padding: 30px;">
+        <h2 style="color: #2c3e50;">Payment Confirmed! 🎬</h2>
+        <p>Hello,</p>
+        <p>Thank you for your purchase. Your order has been successfully paid.</p>
+        <table style="width: 100%; margin: 20px 0; border-collapse: collapse;">
+            <tr>
+                <td style="padding: 8px; font-weight: bold;">Order ID:</td>
+                <td style="padding: 8px;">#{{ order_id }}</td>
+            </tr>
+            <tr>
+                <td style="padding: 8px; font-weight: bold;">Total Amount:</td>
+                <td style="padding: 8px;">${{ total_amount }}</td>
+            </tr>
+        </table>
+        <p>You can now access your purchased movies in your account.</p>
+        <p style="color: #888; font-size: 12px; margin-top: 30px;">If you did not make this purchase, please contact support immediately.</p>
+    </div>
+</body>
+</html>
