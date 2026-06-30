@@ -95,6 +95,14 @@ Required GitHub secrets: `EC2_SSH_KEY`, `EC2_HOST`, `EC2_USER`.
 
 ---
 
+## Live Demo
+
+- **Swagger UI:** http://3.66.54.53/docs
+Basic Auth required — 
+- API_USER=admin_cinema, 
+- API_PASSWORD=Jkjlis657klk2ksdmnJHPoi
+
+
 ## Default Test Accounts
 
 | Email | Password | Role |
