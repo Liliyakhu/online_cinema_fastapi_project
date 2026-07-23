@@ -1,17 +1,19 @@
 import os
 
-from fastapi import Depends, HTTPException, status, Header
+from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
 from config.settings import Settings, TestingSettings
 from security.interfaces import JWTAuthManagerInterface
 from security.token_manager import JWTAuthManager
-
 from notifications.emails import EmailSender
 from notifications.interfaces import EmailSenderInterface
 from storages import S3StorageClient
 from storages.interfaces import S3StorageInterface
+from database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+from services.accounts import AccountService
 
 security = HTTPBearer()
 optional_security = HTTPBearer(auto_error=False)
@@ -88,3 +90,12 @@ def get_s3_storage_client(
         secret_key=settings.MINIO_ROOT_PASSWORD,
         bucket_name=settings.MINIO_STORAGE,
     )
+
+
+def get_account_service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    jwt_manager: JWTAuthManagerInterface = Depends(get_jwt_auth_manager),
+    email_sender: EmailSenderInterface = Depends(get_accounts_email_notificator),
+) -> AccountService:
+    return AccountService(db, settings, jwt_manager, email_sender)

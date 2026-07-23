@@ -1,3 +1,5 @@
+import os
+
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
@@ -5,12 +7,20 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import select
 
-from config.dependencies import get_settings
+from config.settings import Settings, TestingSettings
 from database.models import MovieModel, DirectorModel, StarModel, GenreModel, CertificationModel
 from database.models.base import Base
 from database.models.accounts import UserGroupModel, UserGroupEnum, UserModel
 
-settings = get_settings()
+
+def _get_settings():
+    environment = os.getenv("ENVIRONMENT", "developing")
+    if environment == "testing":
+        return TestingSettings()
+    return Settings()
+
+
+settings = _get_settings()
 
 DATABASE_URL = f"sqlite+aiosqlite:///{settings.PATH_TO_DB}"
 

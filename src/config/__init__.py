@@ -4,5 +4,6 @@ from config.dependencies import (
     get_accounts_email_notificator,
     get_current_user_id,
     get_optional_user_id,
-    get_s3_storage_client
+    get_s3_storage_client,
+    get_account_service
 )
