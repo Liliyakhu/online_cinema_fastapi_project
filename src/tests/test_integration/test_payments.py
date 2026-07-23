@@ -116,7 +116,7 @@ async def test_create_checkout_session_success(client, db_session, jwt_manager, 
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/test-session"
 
-    with patch("routes.payments.stripe.checkout.Session.create", return_value=mock_session):
+    with patch("services.payments.stripe.checkout.Session.create", return_value=mock_session):
         response = await client.post(
             f"/api/v1/payments/orders/{order.id}/checkout/",
             headers={"Authorization": f"Bearer {access_token}"}
@@ -173,7 +173,7 @@ async def test_create_checkout_session_price_changed_warning(client, db_session,
     mock_session = MagicMock()
     mock_session.url = "https://checkout.stripe.com/test-session"
 
-    with patch("routes.payments.stripe.checkout.Session.create", return_value=mock_session):
+    with patch("services.payments.stripe.checkout.Session.create", return_value=mock_session):
         response = await client.post(
             f"/api/v1/payments/orders/{order.id}/checkout/",
             headers={"Authorization": f"Bearer {access_token}"}

@@ -1,0 +1,204 @@
+from datetime import date
+from typing import cast
+
+from fastapi import HTTPException, Request, status
+from pydantic import HttpUrl
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
+
+from database.models.accounts import UserModel, UserGroupEnum, UserProfileModel, GenderEnum
+from exceptions import S3FileUploadError
+from schemas.profiles import ProfileCreateSchema, ProfileResponseSchema
+from storages.interfaces import S3StorageInterface
+from validation import validate_name, validate_gender, validate_birth_date, validate_image
+
+
+class ProfileService:
+
+    def __init__(self, db: AsyncSession, s3_client: S3StorageInterface):
+        self.db = db
+        self.s3_client = s3_client
+
+    def _build_profile_response(self, profile, avatar_url: str) -> ProfileResponseSchema:
+        return ProfileResponseSchema(
+            id=profile.id,
+            user_id=profile.user_id,
+            first_name=profile.first_name,
+            last_name=profile.last_name,
+            gender=profile.gender,
+            date_of_birth=profile.date_of_birth,
+            info=profile.info,
+            avatar=cast(HttpUrl, avatar_url)
+        )
+
+    async def _check_moderator_permission(self, current_user_id: int) -> None:
+        result = await self.db.execute(
+            select(UserModel).options(joinedload(UserModel.group)).filter_by(id=current_user_id)
+        )
+        current_user = result.scalars().first()
+        if not current_user or not (
+            current_user.has_group(UserGroupEnum.MODERATOR) or
+            current_user.has_group(UserGroupEnum.ADMIN)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="You don't have permission to edit this profile."
+            )
+
+    async def create_profile(
+        self, user_id: int, current_user_id: int, profile_data: ProfileCreateSchema
+    ) -> ProfileResponseSchema:
+        if user_id != current_user_id:
+            await self._check_moderator_permission(current_user_id)
+
+        user = await self.db.get(UserModel, user_id)
+        if not user or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found or not active."
+            )
+
+        stmt = select(UserProfileModel).where(UserProfileModel.user_id == user.id)
+        result = await self.db.execute(stmt)
+        if result.scalars().first():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="User already has a profile."
+            )
+
+        avatar_bytes = await profile_data.avatar.read()
+        avatar_key = f"avatars/{user.id}_{profile_data.avatar.filename}"
+
+        try:
+            await self.s3_client.upload_file(file_name=avatar_key, file_data=avatar_bytes)
+        except S3FileUploadError:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to upload avatar. Please try again later."
+            )
+
+        new_profile = UserProfileModel(
+            user_id=cast(int, user.id),
+            first_name=profile_data.first_name,
+            last_name=profile_data.last_name,
+            gender=cast(GenderEnum, profile_data.gender),
+            date_of_birth=profile_data.date_of_birth,
+            info=profile_data.info,
+            avatar=avatar_key
+        )
+        self.db.add(new_profile)
+        await self.db.commit()
+        await self.db.refresh(new_profile)
+
+        avatar_url = await self.s3_client.get_file_url(new_profile.avatar)
+        return self._build_profile_response(new_profile, avatar_url)
+
+    async def get_profile(self, user_id: int) -> ProfileResponseSchema:
+        stmt = select(UserProfileModel).where(UserProfileModel.user_id == user_id)
+        result = await self.db.execute(stmt)
+        profile = result.scalars().first()
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found.")
+
+        avatar_url = await self.s3_client.get_file_url(profile.avatar)
+        return self._build_profile_response(profile, avatar_url)
+
+    async def update_profile(
+        self, user_id: int, current_user_id: int, request: Request
+    ) -> ProfileResponseSchema:
+        if user_id != current_user_id:
+            result = await self.db.execute(
+                select(UserModel).options(joinedload(UserModel.group)).filter_by(id=current_user_id)
+            )
+            current_user = result.scalars().first()
+            if not current_user or not (
+                current_user.has_group(UserGroupEnum.MODERATOR) or
+                current_user.has_group(UserGroupEnum.ADMIN)
+            ):
+                raise HTTPException(status_code=403, detail="No permission.")
+
+        stmt = select(UserProfileModel).where(UserProfileModel.user_id == user_id)
+        result = await self.db.execute(stmt)
+        profile = result.scalars().first()
+
+        if not profile:
+            raise HTTPException(status_code=404, detail="Profile not found.")
+
+        form = await request.form()
+
+        if "first_name" in form:
+            value = form.get("first_name")
+            if value:
+                try:
+                    validate_name(value)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+                profile.first_name = value.lower()
+            else:
+                profile.first_name = None
+
+        if "last_name" in form:
+            value = form.get("last_name")
+            if value:
+                try:
+                    validate_name(value)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+                profile.last_name = value.lower()
+            else:
+                profile.last_name = None
+
+        if "gender" in form:
+            value = form.get("gender")
+            if value:
+                try:
+                    validate_gender(value)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+                profile.gender = value
+            else:
+                profile.gender = None
+
+        if "date_of_birth" in form:
+            value = form.get("date_of_birth")
+            if value:
+                try:
+                    parsed_date = date.fromisoformat(value)
+                    validate_birth_date(parsed_date)
+                except ValueError as e:
+                    raise HTTPException(status_code=422, detail=str(e))
+                profile.date_of_birth = parsed_date
+            else:
+                profile.date_of_birth = None
+
+        if "info" in form:
+            value = form.get("info")
+            profile.info = value if value else None
+
+        avatar = form.get("avatar")
+        if avatar is not None and hasattr(avatar, "filename") and avatar.filename:
+            try:
+                validate_image(avatar)
+            except ValueError as e:
+                raise HTTPException(status_code=422, detail=str(e))
+
+            old_avatar_key = profile.avatar
+            avatar_bytes = await avatar.read()
+            new_avatar_key = f"avatars/{user_id}_{avatar.filename}"
+
+            try:
+                await self.s3_client.upload_file(file_name=new_avatar_key, file_data=avatar_bytes)
+                if old_avatar_key:
+                    await self.s3_client.delete_file(old_avatar_key)
+            except S3FileUploadError:
+                raise HTTPException(status_code=500, detail="Failed to upload avatar.")
+
+            profile.avatar = new_avatar_key
+
+        await self.db.commit()
+        await self.db.refresh(profile)
+
+        avatar_url = await self.s3_client.get_file_url(profile.avatar)
+        return self._build_profile_response(profile, avatar_url)
