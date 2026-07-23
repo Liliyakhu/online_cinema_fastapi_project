@@ -137,7 +137,7 @@ async def test_register_user_internal_server_error(client, seed_user_groups):
         "password": "StrongPassword123!"
     }
 
-    with patch("routes.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
+    with patch("services.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
         response = await client.post("/api/v1/accounts/register/", json=payload)
 
         assert response.status_code == 500, "Expected status code 500 for internal server error."
@@ -668,7 +668,7 @@ async def test_reset_password_sqlalchemy_error(client, db_session, seed_user_gro
         "password": "NewSecurePassword123!"
     }
 
-    with patch("routes.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
+    with patch("services.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
         reset_response = await client.post("/api/v1/accounts/reset-password/complete/", json=reset_complete_payload)
 
     assert reset_response.status_code == 500, "Expected status code 500 for SQLAlchemyError."
@@ -847,7 +847,7 @@ async def test_login_user_commit_error(client, db_session, seed_user_groups):
         "password": user_payload["password"]
     }
 
-    with patch("routes.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
+    with patch("services.accounts.AsyncSession.commit", side_effect=SQLAlchemyError):
         response = await client.post("/api/v1/accounts/login/", json=login_payload)
 
     assert response.status_code == 500, "Expected status code 500 for database commit error."

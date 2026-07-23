@@ -1,12 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 from typing import List
 
-from database import get_db
-from database.models import NotificationModel
+from fastapi import APIRouter, Depends
+
+from config.dependencies import get_current_user_id, get_notification_service
 from schemas import NotificationSchema, MessageResponseSchema
-from config.dependencies import get_current_user_id
+from services.notifications import NotificationService
 
 router = APIRouter()
 
@@ -17,17 +15,10 @@ router = APIRouter()
     summary="Get all notifications for the current user",
 )
 async def get_notifications(
-        db: AsyncSession = Depends(get_db),
-        user_id: int = Depends(get_current_user_id),
+    user_id: int = Depends(get_current_user_id),
+    service: NotificationService = Depends(get_notification_service),
 ) -> List[NotificationSchema]:
-    result = await db.execute(
-        select(NotificationModel)
-        .where(NotificationModel.user_id == user_id)
-        .order_by(NotificationModel.created_at.desc())
-    )
-    notifications = result.scalars().all()
-
-    return [NotificationSchema.model_validate(n) for n in notifications]
+    return await service.get_notifications(user_id)
 
 
 @router.patch(
@@ -46,15 +37,8 @@ async def get_notifications(
     }
 )
 async def mark_notification_read(
-        notification_id: int,
-        db: AsyncSession = Depends(get_db),
-        user_id: int = Depends(get_current_user_id),
+    notification_id: int,
+    user_id: int = Depends(get_current_user_id),
+    service: NotificationService = Depends(get_notification_service),
 ) -> MessageResponseSchema:
-    notification = await db.get(NotificationModel, notification_id)
-    if not notification or notification.user_id != user_id:
-        raise HTTPException(status_code=404, detail="Notification not found.")
-
-    notification.is_read = True
-    await db.commit()
-
-    return MessageResponseSchema(message="Notification marked as read.")
+    return await service.mark_as_read(notification_id, user_id)
